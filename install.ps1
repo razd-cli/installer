@@ -31,6 +31,9 @@ $RazdVersion = if ($env:RAZD_VERSION) { $env:RAZD_VERSION } else { "latest" }
 $MiseBinPath = Join-Path $env:LOCALAPPDATA "mise\bin"
 $MiseExePath = Join-Path $MiseBinPath "mise.exe"
 
+# razd is installed via ubi backend (GitHub releases) since it's not in mise registry yet
+$RazdMisePackage = "ubi:razd-cli/razd"
+
 # =============================================================================
 # Output Functions
 # =============================================================================
@@ -258,18 +261,15 @@ function Install-Razd {
     
     # Determine version argument
     if ($RazdVersion -eq "latest") {
-        $versionArg = "razd@latest"
+        $versionArg = "${RazdMisePackage}@latest"
     }
     else {
-        $versionArg = "razd@$RazdVersion"
+        $versionArg = "${RazdMisePackage}@$RazdVersion"
     }
-    
+
     Write-Info "Installing razd version: $RazdVersion"
-    
-    # Install razd globally via mise
-    # NOTE: If razd is not in the mise registry, use one of these alternatives:
-    #   mise use -g cargo:razd-cli/razd@latest     # Install from crates.io
-    #   mise use -g ubi:razd-cli/razd@latest       # Install from GitHub releases
+
+    # Install razd globally via mise using ubi backend (GitHub releases)
     try {
         & mise use -g $versionArg -y
         if ($LASTEXITCODE -ne 0) {

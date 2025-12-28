@@ -19,6 +19,10 @@ set -euo pipefail
 RAZD_VERSION="${RAZD_VERSION:-latest}"
 MISE_INSTALL_URL="https://mise.run"
 
+# razd is installed via ubi backend (GitHub releases) since it's not in mise registry yet
+# Alternative: cargo:razd-cli/razd (from crates.io)
+RAZD_MISE_PACKAGE="ubi:razd-cli/razd"
+
 # =============================================================================
 # Colors
 # =============================================================================
@@ -124,17 +128,14 @@ install_razd() {
 
     local version_arg=""
     if [ "$RAZD_VERSION" = "latest" ]; then
-        version_arg="razd@latest"
+        version_arg="${RAZD_MISE_PACKAGE}@latest"
     else
-        version_arg="razd@${RAZD_VERSION}"
+        version_arg="${RAZD_MISE_PACKAGE}@${RAZD_VERSION}"
     fi
 
     info "Installing razd version: $RAZD_VERSION"
 
-    # Install razd globally via mise
-    # NOTE: If razd is not in the mise registry, use one of these alternatives:
-    #   mise use -g cargo:razd-cli/razd@latest     # Install from crates.io
-    #   mise use -g ubi:razd-cli/razd@latest       # Install from GitHub releases
+    # Install razd globally via mise using ubi backend (GitHub releases)
     if ! mise use -g "$version_arg" -y; then
         error "Failed to install razd. Please check the output above."
     fi
@@ -146,49 +147,101 @@ install_razd() {
 # Shell Activation Instructions
 # =============================================================================
 
-print_activation_instructions() {
-    step "Post-installation setup"
+get_shell_config() {
+    # Detect shell and return rc_file and activation_cmd
+    case "${SHELL:-}" in
+        */zsh)
+            DETECTED_SHELL="zsh"
+            RC_FILE="$HOME/.zshrc"
+            ACTIVATION_CMD='eval "$(mise activate zsh)"'
+            ;;
+        */bash)
+            DETECTED_SHELL="bash"
+            RC_FILE="$HOME/.bashrc"
+            ACTIVATION_CMD='eval "$(mise activate bash)"'
+            ;;
+        */fish)
+            DETECTED_SHELL="fish"
+            RC_FILE="$HOME/.config/fish/config.fish"
+            ACTIVATION_CMD='mise activate fish | source'
+            ;;
+        *)
+            DETECTED_SHELL=""
+            RC_FILE=""
+            ACTIVATION_CMD=""
+            ;;
+    esac
+}
+
+check_activation_exists() {
+    # Check if mise activation is already in the rc file
+    if [ -n "$RC_FILE" ] && [ -f "$RC_FILE" ]; then
+        if grep -q "mise activate" "$RC_FILE" 2>/dev/null; then
+            return 0  # Already exists
+        fi
+    fi
+    return 1  # Not found
+}
+
+prompt_add_to_rc() {
+    get_shell_config
+
+    if [ -z "$DETECTED_SHELL" ]; then
+        info "Could not detect your shell. Please manually add mise activation to your shell's rc file."
+        return
+    fi
+
+    # Check if already configured
+    if check_activation_exists; then
+        success "mise activation already configured in $RC_FILE"
+        return
+    fi
 
     echo ""
     info "To use razd, mise must be activated in your shell."
     echo ""
 
-    local shell_name
-    local rc_file
-    local activation_cmd
+    # Check if running interactively
+    if [ -t 0 ]; then
+        # Interactive mode - ask user
+        echo -e "   ${CYAN}Add mise activation to ${RC_FILE}?${NC} [Y/n] "
+        read -r response
+        case "$response" in
+            [nN][oO]|[nN])
+                info "Skipped. You can manually add this line to $RC_FILE:"
+                echo ""
+                echo -e "   ${GREEN}${ACTIVATION_CMD}${NC}"
+                echo ""
+                ;;
+            *)
+                # Add to rc file
+                echo "" >> "$RC_FILE"
+                echo "# mise activation (added by razd installer)" >> "$RC_FILE"
+                echo "$ACTIVATION_CMD" >> "$RC_FILE"
+                success "Added mise activation to $RC_FILE"
+                echo ""
+                info "Restart your terminal or run:"
+                echo ""
+                echo -e "   ${GREEN}source $RC_FILE${NC}"
+                echo ""
+                ;;
+        esac
+    else
+        # Non-interactive mode (piped) - print instructions
+        info "Running in non-interactive mode. Please add this line to $RC_FILE:"
+        echo ""
+        echo -e "   ${GREEN}${ACTIVATION_CMD}${NC}"
+        echo ""
+        info "Or re-run the installer interactively:"
+        echo ""
+        echo -e "   ${GREEN}bash <(curl -fsSL https://raw.githubusercontent.com/razd-cli/installer/main/install.sh)${NC}"
+        echo ""
+    fi
+}
 
-    # Detect shell from $SHELL environment variable
-    case "${SHELL:-}" in
-        */zsh)
-            shell_name="zsh"
-            rc_file="~/.zshrc"
-            activation_cmd='eval "$(mise activate zsh)"'
-            ;;
-        */bash)
-            shell_name="bash"
-            rc_file="~/.bashrc"
-            activation_cmd='eval "$(mise activate bash)"'
-            ;;
-        */fish)
-            shell_name="fish"
-            rc_file="~/.config/fish/config.fish"
-            activation_cmd='mise activate fish | source'
-            ;;
-        *)
-            shell_name="your shell"
-            rc_file="your shell's rc file"
-            activation_cmd='eval "$(mise activate <SHELL>)"'
-            ;;
-    esac
-
-    echo -e "   Add this line to ${CYAN}${rc_file}${NC}:"
-    echo ""
-    echo -e "   ${GREEN}${activation_cmd}${NC}"
-    echo ""
-    info "Then restart your terminal or run:"
-    echo ""
-    echo -e "   ${GREEN}source ${rc_file}${NC}"
-    echo ""
+print_activation_instructions() {
+    step "Post-installation setup"
+    prompt_add_to_rc
 }
 
 # =============================================================================
