@@ -47,8 +47,14 @@ jobs:
         shell: pwsh
         run: |
           $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
-          # Use mise exec to run razd without shell activation
+          # Use mise exec to run razd
           mise exec -- razd --version
+          # Also test with mise shims (add shims to PATH)
+          $shimPath = Join-Path $env:LOCALAPPDATA "mise\shims"
+          if (Test-Path $shimPath) {
+            $env:Path = "$shimPath;$env:Path"
+          }
+          razd --version
           Write-Host "✓ razd is installed"
 
   test-ubuntu:
@@ -107,6 +113,7 @@ jobs:
           export PATH="$HOME/.local/bin:$PATH"
           eval "$(mise activate bash)"
           razd --version
+          razd -v
           echo "✓ razd is installed"
 
   test-macos-arm64:
@@ -136,6 +143,7 @@ jobs:
           export PATH="$HOME/.local/bin:$PATH"
           eval "$(mise activate bash)"
           razd --version
+          razd -v
           echo "✓ razd is installed"
 
   test-curl-install:
@@ -203,4 +211,10 @@ jobs:
           $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
           mise --version
           mise exec -- razd --version
+          # Also test with mise shims
+          $shimPath = Join-Path $env:LOCALAPPDATA "mise\shims"
+          if (Test-Path $shimPath) {
+            $env:Path = "$shimPath;$env:Path"
+          }
+          razd -v
           Write-Host "✓ irm | iex installation works"
