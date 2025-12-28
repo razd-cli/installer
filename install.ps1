@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Razd CLI Installer for Windows
@@ -141,13 +141,26 @@ function Install-MiseViaDirectDownload {
         # Create temp directory
         New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
         
-        # Download URL - uses latest release redirect
-        $downloadUrl = "https://github.com/jdx/mise/releases/latest/download/mise-windows-$arch.zip"
+        # Set TLS 1.2 for all requests
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         
+        # Fetch latest release info from GitHub API to get correct asset URL
+        # (mise includes version in filename, so /latest/download/ redirect doesn't work)
+        Write-Info "Fetching latest release info..."
+        $releaseInfo = Invoke-RestMethod -Uri "https://api.github.com/repos/jdx/mise/releases/latest" -UseBasicParsing
+        
+        # Find the Windows asset for our architecture
+        $assetPattern = "mise-.*-windows-$arch\.zip$"
+        $asset = $releaseInfo.assets | Where-Object { $_.name -match $assetPattern } | Select-Object -First 1
+        
+        if ($null -eq $asset) {
+            throw "Could not find Windows $arch asset in latest mise release"
+        }
+        
+        $downloadUrl = $asset.browser_download_url
         Write-Info "Downloading from: $downloadUrl"
         
         # Download the ZIP file
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         Invoke-WebRequest -Uri $downloadUrl -OutFile $zipFile -UseBasicParsing
         
         # Create mise bin directory
