@@ -87,6 +87,8 @@ jobs:
           razd --version
           razd -v
           echo "✓ razd is installed"
+
+  test-macos:
     name: macOS (Bash)
     runs-on: macos-latest
     steps:
