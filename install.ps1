@@ -241,15 +241,45 @@ function Install-Mise {
     # Try winget first
     if (Test-CommandExists "winget") {
         if (Install-MiseViaWinget) {
-            # Refresh PATH to find winget-installed mise
-            $wingetMisePath = Join-Path $env:LOCALAPPDATA "Programs\mise\bin"
-            if (Test-Path $wingetMisePath) {
-                Add-ToPath -Path $wingetMisePath -Persistent
+            # Winget installs mise but doesn't update current session PATH
+            # We need to find where mise was installed and add it to PATH
+            
+            # Refresh PATH from system environment
+            $machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+            $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+            $env:Path = "$machinePath;$userPath"
+            
+            # Common winget installation paths for mise
+            $possiblePaths = @(
+                (Join-Path $env:LOCALAPPDATA "Programs\mise\bin"),
+                (Join-Path $env:LOCALAPPDATA "mise\bin"),
+                (Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Packages" "jdx.mise_*\mise*"),
+                (Join-Path $env:ProgramFiles "mise\bin")
+            )
+            
+            foreach ($pattern in $possiblePaths) {
+                $resolved = Get-Item $pattern -ErrorAction SilentlyContinue | Select-Object -First 1
+                if ($resolved) {
+                    $misePath = if ($resolved.PSIsContainer) { $resolved.FullName } else { Split-Path $resolved.FullName -Parent }
+                    if (Test-Path (Join-Path $misePath "mise.exe")) {
+                        Add-ToPath -Path $misePath -Persistent
+                        Write-Success "mise installed via winget"
+                        return $true
+                    }
+                }
             }
-            Write-Success "mise installed via winget"
-            return $true
+            
+            # If mise is now in PATH after refresh, we're good
+            if (Test-CommandExists "mise") {
+                Write-Success "mise installed via winget"
+                return $true
+            }
+            
+            Write-Warning "winget installed mise but could not locate it, trying direct download..."
         }
-        Write-Warning "winget installation failed, trying direct download..."
+        else {
+            Write-Warning "winget installation failed, trying direct download..."
+        }
     }
     else {
         Write-Info "winget not available, using direct download..."
