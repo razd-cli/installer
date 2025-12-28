@@ -232,6 +232,50 @@ function Install-Mise {
 }
 
 # =============================================================================
+# Task Installation
+# =============================================================================
+
+function Install-Task {
+    Write-Step "Installing task..."
+    
+    # Ensure mise is on PATH
+    if (-not (Test-CommandExists "mise")) {
+        Write-Error "mise is not available."
+        return $false
+    }
+    
+    # Check if task is already installed globally
+    $globalTools = & mise list -g 2>&1
+    if ($globalTools -match "^task") {
+        Write-Success "task is already installed globally"
+        return $true
+    }
+    
+    Write-Info "Installing task (go-task runner)..."
+    
+    try {
+        & mise install task@latest
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "Failed to install task. Continuing anyway..."
+            return $true
+        }
+        
+        & mise use -g task@latest -y
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "Failed to set task globally. Continuing anyway..."
+            return $true
+        }
+        
+        Write-Success "task installed successfully"
+        return $true
+    }
+    catch {
+        Write-Warning "Failed to install task: $_. Continuing anyway..."
+        return $true
+    }
+}
+
+# =============================================================================
 # Razd Installation
 # =============================================================================
 
@@ -330,6 +374,9 @@ function Main {
     if (-not (Install-Mise)) {
         exit 1
     }
+    
+    # Install task
+    Install-Task | Out-Null
     
     # Install razd
     if (-not (Install-Razd)) {

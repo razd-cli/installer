@@ -117,6 +117,36 @@ ensure_mise_activated() {
 }
 
 # =============================================================================
+# Task Installation
+# =============================================================================
+
+install_task() {
+    step "Installing task..."
+
+    ensure_mise_activated
+
+    # Check if task is already installed globally
+    if mise list -g 2>/dev/null | grep -q "^task"; then
+        success "task is already installed globally"
+        return 0
+    fi
+
+    info "Installing task (go-task runner)..."
+
+    if ! mise install task@latest; then
+        warn "Failed to install task. Continuing anyway..."
+        return 0
+    fi
+
+    if ! mise use -g task@latest -y; then
+        warn "Failed to set task globally. Continuing anyway..."
+        return 0
+    fi
+
+    success "task installed successfully"
+}
+
+# =============================================================================
 # Razd Installation
 # =============================================================================
 
@@ -273,6 +303,7 @@ main() {
     echo ""
 
     install_mise
+    install_task
     install_razd
     print_activation_instructions
 
