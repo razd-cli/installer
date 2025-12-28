@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+
+  <Package Name="Razd CLI"
+           Manufacturer="Razd"
+           Version="$(var.Version)"
+           UpgradeCode="A68F278C-B443-40B4-BC49-3C3E69E61094"
+           Scope="perMachine"
+           Compressed="yes">
+
+    <SummaryInformation Description="Razd CLI Installer"
+                        Manufacturer="Razd" />
+
+    <!-- Upgrade handling -->
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Razd CLI is already installed."
+                  Schedule="afterInstallInitialize" />
+
+    <!-- Embed everything in the MSI -->
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- Property for optional mise removal during uninstall -->
+    <Property Id="REMOVE_MISE" Value="0" />
+
+    <!-- Installation directory (used for script extraction) -->
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Razd">
+        <Component Id="InstallScripts" Guid="527B630D-D6A4-4A17-BF94-A3D7B358AEDC">
+          <File Id="InstallPs1" Source="scripts\install.ps1" KeyPath="yes" />
+          <File Id="UninstallPs1" Source="scripts\uninstall.ps1" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <!-- Main feature -->
+    <Feature Id="MainFeature" Title="Razd CLI" Level="1">
+      <ComponentRef Id="InstallScripts" />
+    </Feature>
+
+    <!-- Custom Actions -->
+
+    <!-- Set working directory for scripts -->
+    <SetProperty Id="RunInstallScript" Value="&quot;powershell.exe&quot; -ExecutionPolicy Bypass -NoProfile -NonInteractive -File &quot;[INSTALLFOLDER]install.ps1&quot;" Before="RunInstallScript" Sequence="execute" />
+    
+    <CustomAction Id="RunInstallScript"
+                  BinaryRef="Wix4UtilCA_X86"
+                  DllEntry="WixQuietExec"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
+
+    <SetProperty Id="RunUninstallScript" Value="&quot;powershell.exe&quot; -ExecutionPolicy Bypass -NoProfile -NonInteractive -File &quot;[INSTALLFOLDER]uninstall.ps1&quot; -RemoveMise [REMOVE_MISE]" Before="RunUninstallScript" Sequence="execute" />
+
+    <CustomAction Id="RunUninstallScript"
+                  BinaryRef="Wix4UtilCA_X86"
+                  DllEntry="WixQuietExec"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+
+    <!-- Schedule custom actions -->
+    <InstallExecuteSequence>
+      <!-- Run install script after files are installed, only on first install -->
+      <Custom Action="RunInstallScript" After="InstallFiles">
+        NOT Installed AND NOT REMOVE
+      </Custom>
+      <!-- Run uninstall script before files are removed -->
+      <Custom Action="RunUninstallScript" Before="RemoveFiles">
+        REMOVE~="ALL"
+      </Custom>
+    </InstallExecuteSequence>
+
+    <!-- Simple UI with license and optional mise removal checkbox -->
+    <ui:WixUI Id="WixUI_Minimal" />
+
+  </Package>
+</Wix>

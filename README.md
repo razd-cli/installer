@@ -16,6 +16,17 @@ curl -fsSL https://get.razd-cli.com/install.sh | bash
 irm https://get.razd-cli.com/install.ps1 | iex
 ```
 
+### Windows (MSI Installer)
+
+For enterprise environments or if you prefer a traditional installer:
+
+1. Download the latest MSI from [GitHub Releases](https://github.com/razd-cli/installer/releases)
+2. Run the installer or use silent installation:
+
+```batch
+msiexec /i razd-installer-x64.msi /qn
+```
+
 > **Alternative:** If the short URL is unavailable, use the raw GitHub URLs:
 >
 > - Linux/macOS: `curl -fsSL https://raw.githubusercontent.com/razd-cli/installer/main/install.sh | bash`
@@ -113,6 +124,28 @@ mise activate pwsh | Invoke-Expression
 ### mise not found after installation
 
 The installer adds mise to your PATH, but you may need to restart your terminal for changes to take effect.
+
+## MSI Installer Options
+
+### Silent Installation
+
+```batch
+# Install silently
+msiexec /i razd-installer-x64.msi /qn
+
+# Install with logging
+msiexec /i razd-installer-x64.msi /qn /l*v install.log
+```
+
+### Uninstallation
+
+```batch
+# Uninstall (keeps mise installed)
+msiexec /x razd-installer-x64.msi /qn
+
+# Uninstall and remove mise
+msiexec /x razd-installer-x64.msi /qn REMOVE_MISE=1
+```
 
 ## License
 
