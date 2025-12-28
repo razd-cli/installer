@@ -51,19 +51,19 @@ function Write-Info {
 
 function Write-Success {
     param([string]$Message)
-    Write-Host "✓ " -ForegroundColor Green -NoNewline
+    Write-Host "[OK] " -ForegroundColor Green -NoNewline
     Write-Host $Message
 }
 
 function Write-Warning {
     param([string]$Message)
-    Write-Host "⚠ " -ForegroundColor Yellow -NoNewline
+    Write-Host "[!] " -ForegroundColor Yellow -NoNewline
     Write-Host $Message -ForegroundColor Yellow
 }
 
 function Write-Error {
     param([string]$Message)
-    Write-Host "✗ Error: " -ForegroundColor Red -NoNewline
+    Write-Host "[X] Error: " -ForegroundColor Red -NoNewline
     Write-Host $Message -ForegroundColor Red
 }
 
@@ -441,9 +441,9 @@ function Install-Razd {
 
 function Main {
     Write-Host ""
-    Write-Host "╔════════════════════════════════════════╗" -ForegroundColor Blue
-    Write-Host "║       Razd CLI Installer               ║" -ForegroundColor Blue
-    Write-Host "╚════════════════════════════════════════╝" -ForegroundColor Blue
+    Write-Host "+----------------------------------------+" -ForegroundColor Blue
+    Write-Host "|       Razd CLI Installer               |" -ForegroundColor Blue
+    Write-Host "+----------------------------------------+" -ForegroundColor Blue
     Write-Host ""
     
     # Install mise
