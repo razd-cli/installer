@@ -64,7 +64,7 @@ jobs:
         shell: pwsh
         run: |
           cd installer/wix
-          wix build Package.wxs -o "razd-installer-${{ steps.version.outputs.VERSION }}-x64.msi" -define Version=${{ steps.version.outputs.VERSION }} -ext WixToolset.UI.wixext -ext WixToolset.Util.wixext
+          wix build Package.wxs -o "razd-installer-${{ steps.version.outputs.VERSION }}-x64.msi" -define Version=${{ steps.version.outputs.VERSION }}
 
       - name: Upload MSI artifact
         uses: actions/upload-artifact@v4

@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
-     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
 
   <Package Name="Razd CLI"
            Manufacturer="Razd"
@@ -37,23 +36,17 @@
       <ComponentRef Id="InstallScripts" />
     </Feature>
 
-    <!-- Custom Actions -->
-
-    <!-- Set working directory for scripts -->
-    <SetProperty Id="RunInstallScript" Value="&quot;powershell.exe&quot; -ExecutionPolicy Bypass -NoProfile -NonInteractive -File &quot;[INSTALLFOLDER]install.ps1&quot;" Before="RunInstallScript" Sequence="execute" />
-    
+    <!-- Custom Actions using direct exe call -->
     <CustomAction Id="RunInstallScript"
-                  BinaryRef="Wix4UtilCA_X86"
-                  DllEntry="WixQuietExec"
+                  Directory="INSTALLFOLDER"
+                  ExeCommand="powershell.exe -ExecutionPolicy Bypass -NoProfile -NonInteractive -File &quot;[INSTALLFOLDER]install.ps1&quot;"
                   Execute="deferred"
                   Impersonate="no"
                   Return="check" />
 
-    <SetProperty Id="RunUninstallScript" Value="&quot;powershell.exe&quot; -ExecutionPolicy Bypass -NoProfile -NonInteractive -File &quot;[INSTALLFOLDER]uninstall.ps1&quot; -RemoveMise [REMOVE_MISE]" Before="RunUninstallScript" Sequence="execute" />
-
     <CustomAction Id="RunUninstallScript"
-                  BinaryRef="Wix4UtilCA_X86"
-                  DllEntry="WixQuietExec"
+                  Directory="INSTALLFOLDER"
+                  ExeCommand="powershell.exe -ExecutionPolicy Bypass -NoProfile -NonInteractive -File &quot;[INSTALLFOLDER]uninstall.ps1&quot; -RemoveMise [REMOVE_MISE]"
                   Execute="deferred"
                   Impersonate="no"
                   Return="ignore" />
@@ -69,9 +62,6 @@
         REMOVE~="ALL"
       </Custom>
     </InstallExecuteSequence>
-
-    <!-- Simple UI with license and optional mise removal checkbox -->
-    <ui:WixUI Id="WixUI_Minimal" />
 
   </Package>
 </Wix>
