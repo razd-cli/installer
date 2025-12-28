@@ -47,9 +47,8 @@ jobs:
         shell: pwsh
         run: |
           $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
-          # Activate mise to get razd in PATH
-          mise activate pwsh | Invoke-Expression
-          razd --version
+          # Use mise exec to run razd without shell activation
+          mise exec -- razd --version
           Write-Host "✓ razd is installed"
 
   test-ubuntu:
@@ -195,6 +194,5 @@ jobs:
         run: |
           $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
           mise --version
-          mise activate pwsh | Invoke-Expression
-          razd --version
+          mise exec -- razd --version
           Write-Host "✓ irm | iex installation works"
