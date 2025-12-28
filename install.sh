@@ -133,17 +133,20 @@ install_task() {
 
     info "Installing task (go-task runner)..."
 
-    if ! mise install task@latest; then
-        warn "Failed to install task. Continuing anyway..."
+    # First install task
+    if ! mise install task@latest 2>&1; then
+        warn "Failed to install task. You can install it manually with: mise install task@latest"
         return 0
     fi
 
-    if ! mise use -g task@latest -y; then
-        warn "Failed to set task globally. Continuing anyway..."
+    # Then set it globally
+    if ! mise use -g task@latest -y 2>&1; then
+        warn "Failed to set task globally. You can set it manually with: mise use -g task@latest"
         return 0
     fi
 
     success "task installed successfully"
+    return 0
 }
 
 # =============================================================================

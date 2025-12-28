@@ -254,15 +254,17 @@ function Install-Task {
     Write-Info "Installing task (go-task runner)..."
     
     try {
+        # First install task
         & mise install task@latest
         if ($LASTEXITCODE -ne 0) {
-            Write-Warning "Failed to install task. Continuing anyway..."
+            Write-Warning "Failed to install task. You can install it manually with: mise install task@latest"
             return $true
         }
         
+        # Then set it globally
         & mise use -g task@latest -y
         if ($LASTEXITCODE -ne 0) {
-            Write-Warning "Failed to set task globally. Continuing anyway..."
+            Write-Warning "Failed to set task globally. You can set it manually with: mise use -g task@latest"
             return $true
         }
         
@@ -270,7 +272,7 @@ function Install-Task {
         return $true
     }
     catch {
-        Write-Warning "Failed to install task: $_. Continuing anyway..."
+        Write-Warning "Failed to install task: $_. You can install it manually with: mise install task@latest"
         return $true
     }
 }
