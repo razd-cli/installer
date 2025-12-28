@@ -71,6 +71,19 @@ function Write-Error {
 # Utility Functions
 # =============================================================================
 
+function Invoke-Mise {
+    # Run mise command while suppressing stderr warnings that would cause errors
+    param([Parameter(ValueFromRemainingArguments = $true)]$Arguments)
+    $prevErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & mise @Arguments 2>&1 | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] }
+    }
+    finally {
+        $ErrorActionPreference = $prevErrorActionPreference
+    }
+}
+
 function Test-CommandExists {
     param([string]$Command)
     $null -ne (Get-Command $Command -ErrorAction SilentlyContinue)
@@ -224,7 +237,7 @@ function Install-Mise {
     
     # Check if mise is already installed
     if (Test-CommandExists "mise") {
-        $version = & mise --version 2>&1
+        $version = Invoke-Mise --version
         Write-Success "mise is already installed ($version)"
         return $true
     }
@@ -308,7 +321,7 @@ function Install-Task {
     }
     
     # Check if task is already installed globally
-    $globalTools = & mise list -g 2>&1
+    $globalTools = Invoke-Mise list -g
     if ($globalTools -match "^task") {
         Write-Success "task is already installed globally"
         return $true
@@ -318,14 +331,14 @@ function Install-Task {
     
     try {
         # First install task
-        & mise install task@latest
+        Invoke-Mise install task@latest
         if ($LASTEXITCODE -ne 0) {
             Write-Warning "Failed to install task. You can install it manually with: mise install task@latest"
             return $true
         }
         
         # Then set it globally
-        & mise use -g task@latest -y
+        Invoke-Mise use -g task@latest -y
         if ($LASTEXITCODE -ne 0) {
             Write-Warning "Failed to set task globally. You can set it manually with: mise use -g task@latest"
             return $true
@@ -348,7 +361,7 @@ function Install-RazdPlugin {
     Write-Step "Installing razd plugin..."
     
     # Check if plugin is already installed
-    $plugins = & mise plugin list 2>&1 | Out-String
+    $plugins = Invoke-Mise plugin list | Out-String
     if ($plugins -match "(?m)^razd" -or $plugins -match "\brazd\b") {
         Write-Success "razd plugin is already installed"
         return $true
@@ -357,7 +370,7 @@ function Install-RazdPlugin {
     Write-Info "Adding razd plugin from $RazdPluginUrl"
     
     try {
-        & mise plugin install razd $RazdPluginUrl
+        Invoke-Mise plugin install razd $RazdPluginUrl
         if ($LASTEXITCODE -ne 0) {
             throw "mise plugin install command failed with exit code $LASTEXITCODE"
         }
@@ -422,7 +435,7 @@ function Install-Razd {
 
     # Install razd globally via mise
     try {
-        & mise use -g $versionArg -y
+        Invoke-Mise use -g $versionArg -y
         if ($LASTEXITCODE -ne 0) {
             throw "mise use command failed with exit code $LASTEXITCODE"
         }
