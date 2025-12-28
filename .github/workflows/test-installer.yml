@@ -82,11 +82,11 @@ jobs:
         shell: bash
         run: |
           export PATH="$HOME/.local/bin:$PATH"
-          eval "$(mise activate bash)"
+          # Source bashrc to get mise activation added by installer
+          source ~/.bashrc || true
           razd --version
+          razd -v
           echo "✓ razd is installed"
-
-  test-macos:
     name: macOS (Bash)
     runs-on: macos-latest
     steps:
@@ -111,7 +111,8 @@ jobs:
         shell: bash
         run: |
           export PATH="$HOME/.local/bin:$PATH"
-          eval "$(mise activate bash)"
+          # Source profile to get mise activation added by installer
+          source ~/.bashrc 2>/dev/null || source ~/.zshrc 2>/dev/null || true
           razd --version
           razd -v
           echo "✓ razd is installed"
@@ -141,7 +142,8 @@ jobs:
         shell: bash
         run: |
           export PATH="$HOME/.local/bin:$PATH"
-          eval "$(mise activate bash)"
+          # Source profile to get mise activation added by installer
+          source ~/.bashrc 2>/dev/null || source ~/.zshrc 2>/dev/null || true
           razd --version
           razd -v
           echo "✓ razd is installed"
@@ -169,7 +171,8 @@ jobs:
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           mise --version
-          eval "$(mise activate bash)"
+          # Source bashrc to get mise activation added by installer
+          source ~/.bashrc || true
           razd --version
           echo "✓ curl | bash installation works"
 

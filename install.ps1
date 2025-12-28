@@ -462,16 +462,40 @@ function Main {
     Write-Host ""
     Write-Step "Post-installation setup"
     Write-Host ""
+    
+    # Add mise activation to PowerShell profile
+    $activationLine = 'mise activate pwsh | Out-String | Invoke-Expression'
+    $profileDir = Split-Path $PROFILE -Parent
+    
+    # Check if activation already exists in profile
+    $alreadyConfigured = $false
+    if (Test-Path $PROFILE) {
+        $profileContent = Get-Content $PROFILE -Raw -ErrorAction SilentlyContinue
+        if ($profileContent -and $profileContent -match "mise activate") {
+            $alreadyConfigured = $true
+            Write-Success "mise activation already configured in PowerShell profile"
+        }
+    }
+    
+    if (-not $alreadyConfigured) {
+        # Create profile directory if needed
+        if (-not (Test-Path $profileDir)) {
+            New-Item -ItemType Directory -Path $profileDir -Force | Out-Null
+        }
+        
+        # Add activation to profile
+        Add-Content -Path $PROFILE -Value "`n# mise activation (added by razd installer)"
+        Add-Content -Path $PROFILE -Value $activationLine
+        Write-Success "Added mise activation to PowerShell profile"
+    }
+    
+    Write-Host ""
     Write-Info "mise has been added to your PATH."
     Write-Info "You may need to restart your terminal for changes to take effect."
     Write-Host ""
     Write-Info "To activate mise in your current session, run:"
     Write-Host ""
     Write-Host "    mise activate pwsh | Invoke-Expression" -ForegroundColor Green
-    Write-Host ""
-    Write-Info "To make this permanent, add the above line to your PowerShell profile:"
-    Write-Host ""
-    Write-Host "    `$PROFILE" -ForegroundColor Cyan
     Write-Host ""
     
     Write-Success "Installation complete!"

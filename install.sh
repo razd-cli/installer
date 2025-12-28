@@ -305,15 +305,18 @@ prompt_add_to_rc() {
                 ;;
         esac
     else
-        # Non-interactive mode (piped) - print instructions
-        info "Running in non-interactive mode. Please add this line to $RC_FILE:"
-        echo ""
-        echo -e "   ${GREEN}${ACTIVATION_CMD}${NC}"
-        echo ""
-        info "Or re-run the installer interactively:"
-        echo ""
-        echo -e "   ${GREEN}bash <(curl -fsSL https://raw.githubusercontent.com/razd-cli/installer/main/install.sh)${NC}"
-        echo ""
+        # Non-interactive mode (piped) - automatically add activation
+        if [ -n "$RC_FILE" ] && [ -d "$(dirname "$RC_FILE")" ]; then
+            echo "" >> "$RC_FILE"
+            echo "# mise activation (added by razd installer)" >> "$RC_FILE"
+            echo "$ACTIVATION_CMD" >> "$RC_FILE"
+            success "Added mise activation to $RC_FILE"
+        else
+            info "Could not automatically add mise activation. Please add this line to your shell's rc file:"
+            echo ""
+            echo -e "   ${GREEN}${ACTIVATION_CMD}${NC}"
+            echo ""
+        fi
     fi
 }
 
