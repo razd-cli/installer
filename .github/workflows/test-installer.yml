@@ -172,22 +172,30 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Start local HTTP server
-        shell: pwsh
-        run: |
-          Start-Job -ScriptBlock {
-            Set-Location $using:PWD
-            python -m http.server 8080
-          }
-          Start-Sleep -Seconds 3
-
       - name: Test irm | iex installation method
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           Write-Host "Testing irm | iex installation method..."
-          Invoke-RestMethod -Uri "http://localhost:8080/install.ps1" | Invoke-Expression
+          # Start HTTP server in background
+          $serverJob = Start-Process -FilePath "python" -ArgumentList "-m", "http.server", "8080" -WorkingDirectory $PWD -PassThru -WindowStyle Hidden
+          Start-Sleep -Seconds 5
+
+          try {
+            # Test that server is running
+            $response = Invoke-WebRequest -Uri "http://localhost:8080/install.ps1" -UseBasicParsing -TimeoutSec 10
+            Write-Host "Server is running, content length: $($response.Content.Length)"
+            
+            # Run the installer
+            Invoke-RestMethod -Uri "http://localhost:8080/install.ps1" | Invoke-Expression
+          }
+          finally {
+            # Stop the server
+            if ($serverJob -and !$serverJob.HasExited) {
+              Stop-Process -Id $serverJob.Id -Force -ErrorAction SilentlyContinue
+            }
+          }
 
       - name: Verify installation
         shell: pwsh
