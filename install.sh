@@ -19,9 +19,8 @@ set -euo pipefail
 RAZD_VERSION="${RAZD_VERSION:-latest}"
 MISE_INSTALL_URL="https://mise.run"
 
-# razd is installed via ubi backend (GitHub releases) since it's not in mise registry yet
-# Alternative: cargo:razd-cli/razd (from crates.io)
-RAZD_MISE_PACKAGE="ubi:razd-cli/razd"
+# razd plugin for mise
+RAZD_PLUGIN_URL="https://github.com/razd-cli/vfox-plugin-razd"
 
 # =============================================================================
 # Colors
@@ -121,21 +120,39 @@ ensure_mise_activated() {
 # Razd Installation
 # =============================================================================
 
+install_razd_plugin() {
+    step "Installing razd plugin..."
+
+    # Check if plugin is already installed
+    if mise plugin list 2>/dev/null | grep -q "^razd"; then
+        success "razd plugin is already installed"
+        return 0
+    fi
+
+    info "Adding razd plugin from $RAZD_PLUGIN_URL"
+
+    if ! mise plugin install razd "$RAZD_PLUGIN_URL"; then
+        error "Failed to install razd plugin. Please check the output above."
+    fi
+
+    success "razd plugin installed successfully"
+}
+
 install_razd() {
     step "Installing razd..."
 
     ensure_mise_activated
+    install_razd_plugin
 
     local version_arg=""
     if [ "$RAZD_VERSION" = "latest" ]; then
-        version_arg="${RAZD_MISE_PACKAGE}@latest"
+        version_arg="razd@latest"
     else
-        version_arg="${RAZD_MISE_PACKAGE}@${RAZD_VERSION}"
+        version_arg="razd@${RAZD_VERSION}"
     fi
 
     info "Installing razd version: $RAZD_VERSION"
 
-    # Install razd globally via mise using ubi backend (GitHub releases)
     if ! mise use -g "$version_arg" -y; then
         error "Failed to install razd. Please check the output above."
     fi

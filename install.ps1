@@ -31,8 +31,8 @@ $RazdVersion = if ($env:RAZD_VERSION) { $env:RAZD_VERSION } else { "latest" }
 $MiseBinPath = Join-Path $env:LOCALAPPDATA "mise\bin"
 $MiseExePath = Join-Path $MiseBinPath "mise.exe"
 
-# razd is installed via ubi backend (GitHub releases) since it's not in mise registry yet
-$RazdMisePackage = "ubi:razd-cli/razd"
+# razd plugin for mise
+$RazdPluginUrl = "https://github.com/razd-cli/vfox-plugin-razd"
 
 # =============================================================================
 # Output Functions
@@ -235,6 +235,32 @@ function Install-Mise {
 # Razd Installation
 # =============================================================================
 
+function Install-RazdPlugin {
+    Write-Step "Installing razd plugin..."
+    
+    # Check if plugin is already installed
+    $plugins = & mise plugin list 2>&1
+    if ($plugins -match "^razd") {
+        Write-Success "razd plugin is already installed"
+        return $true
+    }
+    
+    Write-Info "Adding razd plugin from $RazdPluginUrl"
+    
+    try {
+        & mise plugin install razd $RazdPluginUrl
+        if ($LASTEXITCODE -ne 0) {
+            throw "mise plugin install command failed with exit code $LASTEXITCODE"
+        }
+        Write-Success "razd plugin installed successfully"
+        return $true
+    }
+    catch {
+        Write-Error "Failed to install razd plugin: $_"
+        return $false
+    }
+}
+
 function Install-Razd {
     Write-Step "Installing razd..."
     
@@ -259,17 +285,22 @@ function Install-Razd {
         return $false
     }
     
+    # Install razd plugin first
+    if (-not (Install-RazdPlugin)) {
+        return $false
+    }
+    
     # Determine version argument
     if ($RazdVersion -eq "latest") {
-        $versionArg = "${RazdMisePackage}@latest"
+        $versionArg = "razd@latest"
     }
     else {
-        $versionArg = "${RazdMisePackage}@$RazdVersion"
+        $versionArg = "razd@$RazdVersion"
     }
 
     Write-Info "Installing razd version: $RazdVersion"
 
-    # Install razd globally via mise using ubi backend (GitHub releases)
+    # Install razd globally via mise
     try {
         & mise use -g $versionArg -y
         if ($LASTEXITCODE -ne 0) {
