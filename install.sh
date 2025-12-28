@@ -66,6 +66,24 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
+get_latest_razd_version() {
+    # Fetch latest version from GitHub API
+    # Use GITHUB_TOKEN if available to avoid rate limiting
+    local auth_header=""
+    if [ -n "${GITHUB_TOKEN:-}" ]; then
+        auth_header="Authorization: token $GITHUB_TOKEN"
+    fi
+    
+    local version=""
+    if [ -n "$auth_header" ]; then
+        version=$(curl -fsSL -H "$auth_header" "https://api.github.com/repos/razd-cli/razd/releases/latest" 2>/dev/null | grep '"tag_name"' | sed -E 's/.*"tag_name": *"v?([^"]+)".*/\1/')
+    else
+        version=$(curl -fsSL "https://api.github.com/repos/razd-cli/razd/releases/latest" 2>/dev/null | grep '"tag_name"' | sed -E 's/.*"tag_name": *"v?([^"]+)".*/\1/')
+    fi
+    
+    echo "$version"
+}
+
 # =============================================================================
 # Mise Installation
 # =============================================================================
@@ -177,14 +195,24 @@ install_razd() {
     ensure_mise_activated
     install_razd_plugin
 
-    local version_arg=""
+    local version_to_install="$RAZD_VERSION"
+    
+    # If "latest" is specified, fetch the actual latest version number
+    # because the vfox plugin doesn't handle "latest" properly
     if [ "$RAZD_VERSION" = "latest" ]; then
-        version_arg="razd@latest"
-    else
-        version_arg="razd@${RAZD_VERSION}"
+        info "Fetching latest razd version..."
+        version_to_install=$(get_latest_razd_version)
+        if [ -z "$version_to_install" ]; then
+            warn "Could not fetch latest version, falling back to 'latest'"
+            version_to_install="latest"
+        else
+            info "Latest version: $version_to_install"
+        fi
     fi
 
-    info "Installing razd version: $RAZD_VERSION"
+    local version_arg="razd@${version_to_install}"
+
+    info "Installing razd version: $version_to_install"
 
     if ! mise use -g "$version_arg" -y; then
         error "Failed to install razd. Please check the output above."

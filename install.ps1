@@ -76,6 +76,26 @@ function Test-CommandExists {
     $null -ne (Get-Command $Command -ErrorAction SilentlyContinue)
 }
 
+function Get-LatestRazdVersion {
+    # Fetch latest version from GitHub API
+    # Use GITHUB_TOKEN if available to avoid rate limiting
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        $headers = @{}
+        if ($env:GITHUB_TOKEN) {
+            $headers["Authorization"] = "token $env:GITHUB_TOKEN"
+        }
+        
+        $releaseInfo = Invoke-RestMethod -Uri "https://api.github.com/repos/razd-cli/razd/releases/latest" -Headers $headers -UseBasicParsing
+        $version = $releaseInfo.tag_name -replace '^v', ''
+        return $version
+    }
+    catch {
+        Write-Warning "Could not fetch latest version: $_"
+        return $null
+    }
+}
+
 function Get-SystemArchitecture {
     # Detect system architecture for download URL
     $arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
@@ -298,8 +318,8 @@ function Install-RazdPlugin {
     Write-Step "Installing razd plugin..."
     
     # Check if plugin is already installed
-    $plugins = & mise plugin list 2>&1
-    if ($plugins -match "^razd") {
+    $plugins = & mise plugin list 2>&1 | Out-String
+    if ($plugins -match "(?m)^razd" -or $plugins -match "\brazd\b") {
         Write-Success "razd plugin is already installed"
         return $true
     }
@@ -349,15 +369,26 @@ function Install-Razd {
         return $false
     }
     
-    # Determine version argument
+    # Determine version to install
+    $versionToInstall = $RazdVersion
+    
+    # If "latest" is specified, fetch the actual latest version number
+    # because the vfox plugin doesn't handle "latest" properly
     if ($RazdVersion -eq "latest") {
-        $versionArg = "razd@latest"
+        Write-Info "Fetching latest razd version..."
+        $versionToInstall = Get-LatestRazdVersion
+        if ($null -eq $versionToInstall -or $versionToInstall -eq "") {
+            Write-Warning "Could not fetch latest version, falling back to 'latest'"
+            $versionToInstall = "latest"
+        }
+        else {
+            Write-Info "Latest version: $versionToInstall"
+        }
     }
-    else {
-        $versionArg = "razd@$RazdVersion"
-    }
+    
+    $versionArg = "razd@$versionToInstall"
 
-    Write-Info "Installing razd version: $RazdVersion"
+    Write-Info "Installing razd version: $versionToInstall"
 
     # Install razd globally via mise
     try {
