@@ -1,0 +1,183 @@
+name: Test Installer Scripts
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "install.ps1"
+      - "install.sh"
+      - ".github/workflows/test-installer.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "install.ps1"
+      - "install.sh"
+      - ".github/workflows/test-installer.yml"
+  workflow_dispatch:
+
+jobs:
+  test-windows:
+    name: Windows (PowerShell)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run installer script
+        shell: pwsh
+        run: |
+          Write-Host "Testing install.ps1 on Windows..."
+          & .\install.ps1
+
+      - name: Verify mise installation
+        shell: pwsh
+        run: |
+          $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+          mise --version
+          Write-Host "✓ mise is installed"
+
+      - name: Verify razd installation
+        shell: pwsh
+        run: |
+          $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+          # Activate mise to get razd in PATH
+          mise activate pwsh | Invoke-Expression
+          razd --version
+          Write-Host "✓ razd is installed"
+
+  test-ubuntu:
+    name: Ubuntu (Bash)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run installer script
+        run: |
+          echo "Testing install.sh on Ubuntu..."
+          chmod +x install.sh
+          ./install.sh
+
+      - name: Verify mise installation
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          mise --version
+          echo "✓ mise is installed"
+
+      - name: Verify razd installation
+        shell: bash
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          eval "$(mise activate bash)"
+          razd --version
+          echo "✓ razd is installed"
+
+  test-macos:
+    name: macOS (Bash)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run installer script
+        run: |
+          echo "Testing install.sh on macOS..."
+          chmod +x install.sh
+          ./install.sh
+
+      - name: Verify mise installation
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          mise --version
+          echo "✓ mise is installed"
+
+      - name: Verify razd installation
+        shell: bash
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          eval "$(mise activate bash)"
+          razd --version
+          echo "✓ razd is installed"
+
+  test-macos-arm64:
+    name: macOS ARM64 (Bash)
+    runs-on: macos-14 # Apple Silicon runner
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run installer script
+        run: |
+          echo "Testing install.sh on macOS ARM64..."
+          chmod +x install.sh
+          ./install.sh
+
+      - name: Verify mise installation
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          mise --version
+          echo "✓ mise is installed"
+
+      - name: Verify razd installation
+        shell: bash
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          eval "$(mise activate bash)"
+          razd --version
+          echo "✓ razd is installed"
+
+  test-curl-install:
+    name: Test curl | bash installation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Start local HTTP server
+        run: |
+          python3 -m http.server 8080 &
+          sleep 2
+
+      - name: Test curl installation method
+        run: |
+          echo "Testing curl | bash installation method..."
+          curl -fsSL http://localhost:8080/install.sh | bash
+
+      - name: Verify installation
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          mise --version
+          eval "$(mise activate bash)"
+          razd --version
+          echo "✓ curl | bash installation works"
+
+  test-irm-install:
+    name: Test irm | iex installation (Windows)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Start local HTTP server
+        shell: pwsh
+        run: |
+          Start-Job -ScriptBlock {
+            Set-Location $using:PWD
+            python -m http.server 8080
+          }
+          Start-Sleep -Seconds 3
+
+      - name: Test irm | iex installation method
+        shell: pwsh
+        run: |
+          Write-Host "Testing irm | iex installation method..."
+          Invoke-RestMethod -Uri "http://localhost:8080/install.ps1" | Invoke-Expression
+
+      - name: Verify installation
+        shell: pwsh
+        run: |
+          $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+          mise --version
+          mise activate pwsh | Invoke-Expression
+          razd --version
+          Write-Host "✓ irm | iex installation works"
