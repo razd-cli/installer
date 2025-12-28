@@ -7,14 +7,19 @@ Cross-platform installation scripts for the [razd](https://github.com/razd-cli/r
 ### Linux / macOS
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/razd-cli/installer/main/install.sh | bash
+curl -fsSL https://get.razd-cli.com/install.sh | bash
 ```
 
 ### Windows (PowerShell)
 
 ```powershell
-irm https://raw.githubusercontent.com/razd-cli/installer/main/install.ps1 | iex
+irm https://get.razd-cli.com/install.ps1 | iex
 ```
+
+> **Alternative:** If the short URL is unavailable, use the raw GitHub URLs:
+>
+> - Linux/macOS: `curl -fsSL https://raw.githubusercontent.com/razd-cli/installer/main/install.sh | bash`
+> - Windows: `irm https://raw.githubusercontent.com/razd-cli/installer/main/install.ps1 | iex`
 
 ## What It Does
 
@@ -32,13 +37,13 @@ Set the `RAZD_VERSION` environment variable before running the installer:
 ### Linux / macOS
 
 ```bash
-RAZD_VERSION=1.0.0 curl -fsSL https://raw.githubusercontent.com/razd-cli/installer/main/install.sh | bash
+RAZD_VERSION=1.0.0 curl -fsSL https://get.razd-cli.com/install.sh | bash
 ```
 
 ### Windows (PowerShell)
 
 ```powershell
-$env:RAZD_VERSION = "1.0.0"; irm https://raw.githubusercontent.com/razd-cli/installer/main/install.ps1 | iex
+$env:RAZD_VERSION = "1.0.0"; irm https://get.razd-cli.com/install.ps1 | iex
 ```
 
 ## Prerequisites
