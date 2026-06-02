@@ -107,6 +107,20 @@ get_latest_version() {
     echo "$version"
 }
 
+get_latest_prerelease_version() {
+    local version
+    version=$(github_api_get "/repos/${GITHUB_REPO}/releases?per_page=10" | grep -E '"tag_name"|"prerelease"' | while read -r tag_line; do
+        read -r pre_line
+        tag=$(echo "$tag_line" | sed -E 's/.*"tag_name": *"v?([^"]+)".*/\1/')
+        pre=$(echo "$pre_line" | sed -E 's/.*"prerelease": *(true|false).*/\1/')
+        if [ "$pre" = "true" ]; then
+            echo "$tag"
+            break
+        fi
+    done)
+    echo "$version"
+}
+
 list_versions() {
     local limit="${1:-20}"
     step "Fetching available razd versions..."
@@ -143,11 +157,19 @@ list_versions() {
 resolve_version() {
     local version_input="$1"
     if [ "$version_input" = "latest" ]; then
-        info "Fetching latest razd version..."
+        info "Fetching latest stable razd version..."
         local version
         version=$(get_latest_version)
         if [ -z "$version" ]; then
             error "Could not determine latest version. Please specify a version with --version or RAZD_VERSION."
+        fi
+        echo "$version"
+    elif [ "$version_input" = "pre-release" ]; then
+        info "Fetching latest pre-release razd version..."
+        local version
+        version=$(get_latest_prerelease_version)
+        if [ -z "$version" ]; then
+            error "Could not find a pre-release version. Check available versions with --list."
         fi
         echo "$version"
     else
@@ -316,10 +338,11 @@ show_help() {
     echo "  ./install.sh [OPTIONS]"
     echo ""
     echo "Options:"
-    echo "  -v, --version VERSION  Install specific version (default: latest)"
-    echo "  -l, --list [N]        List available versions (default: 20)"
-    echo "  -d, --dir DIR         Installation directory (default: ~/.local/bin)"
-    echo "  -h, --help            Show this help message"
+    echo "  -v, --version VERSION  Install specific version (default: latest stable)"
+    echo "  -p, --pre-release      Install latest pre-release version"
+    echo "  -l, --list [N]         List available versions (default: 20)"
+    echo "  -d, --dir DIR          Installation directory (default: ~/.local/bin)"
+    echo "  -h, --help             Show this help message"
     echo ""
     echo "Environment Variables:"
     echo "  RAZD_VERSION          Version to install (default: latest)"
@@ -327,11 +350,12 @@ show_help() {
     echo "  GITHUB_TOKEN          GitHub token to avoid rate limiting"
     echo ""
     echo "Examples:"
-    echo "  ./install.sh                          # Install latest version"
-    echo "  ./install.sh --version 1.0.0          # Install specific version"
-    echo "  ./install.sh --version 1.0.0-dev.0    # Install pre-release"
-    echo "  ./install.sh --list                    # List available versions"
-    echo "  ./install.sh --list 50                 # List up to 50 versions"
+    echo "  ./install.sh                            # Install latest stable version"
+    echo "  ./install.sh --pre-release              # Install latest pre-release"
+    echo "  ./install.sh --version 1.0.0            # Install specific version"
+    echo "  ./install.sh --version 1.0.0-dev.0      # Install pre-release by tag"
+    echo "  ./install.sh --list                      # List available versions"
+    echo "  ./install.sh --list 50                   # List up to 50 versions"
     echo ""
     echo "Piped usage:"
     echo "  curl -fsSL <url>/install.sh | bash"
@@ -355,6 +379,10 @@ main() {
                     error "Missing argument for --version"
                 fi
                 version="$1"
+                shift
+                ;;
+            -p|--pre-release)
+                version="pre-release"
                 shift
                 ;;
             -l|--list)

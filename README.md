@@ -50,15 +50,36 @@ See all releases on GitHub before installing:
 
 ## Install a Specific Version
 
+By default, the installer installs the **latest stable** release. Pre-release versions are not included by default.
+
 ### Linux / macOS
 
 ```bash
-# Using environment variable (works with piped curl)
+# Install latest stable version
+curl -fsSL https://get.razd-cli.com/install.sh | bash
+
+# Install a specific version
 RAZD_VERSION=1.0.0 curl -fsSL https://get.razd-cli.com/install.sh | bash
 
-# Using command-line flag (when running directly)
+# Or when running directly:
 ./install.sh --version 1.0.0
-./install.sh -v 1.0.0-dev.0
+./install.sh --pre-release        # latest pre-release
+./install.sh -v 1.0.0-dev.0      # specific pre-release
+```
+
+### Windows (PowerShell)
+
+```powershell
+# Install latest stable version
+irm https://get.razd-cli.com/install.ps1 | iex
+
+# Install a specific version
+$env:RAZD_VERSION = "1.0.0"; irm https://get.razd-cli.com/install.ps1 | iex
+
+# Or when running directly:
+.\install.ps1 -Version 1.0.0
+.\install.ps1 -PreRelease
+.\install.ps1 -Version 1.0.0-dev.0
 ```
 
 ### Windows (PowerShell)
@@ -101,7 +122,8 @@ Usage:
   ./install.sh [OPTIONS]
 
 Options:
-  -v, --version VERSION  Install specific version (default: latest)
+  -v, --version VERSION  Install specific version (default: latest stable)
+  -p, --pre-release      Install latest pre-release version
   -l, --list [N]         List available versions (default: 20)
   -d, --dir DIR          Installation directory (default: ~/.local/bin)
   -h, --help             Show help message
@@ -116,11 +138,12 @@ Environment Variables:
 
 ```
 Options:
-  -Version VERSION    Install specific version (default: latest)
-  -List               List available versions
-  -ListCount N        Number of versions to list (default: 20)
+  -Version VERSION    Install specific version (default: latest stable)
+  -PreRelease          Install latest pre-release version
+  -List                List available versions
+  -ListCount N         Number of versions to list (default: 20)
   -InstallDir DIR     Installation directory
-  -Help               Show help message
+  -Help                Show help message
 
 Environment Variables:
   RAZD_VERSION         Version to install

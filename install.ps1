@@ -33,6 +33,7 @@
 
 param(
     [string]$Version,
+    [switch]$PreRelease,
     [switch]$List,
     [int]$ListCount = 20,
     [string]$InstallDir,
@@ -45,7 +46,7 @@ $ErrorActionPreference = 'Stop'
 # Configuration
 # =============================================================================
 
-$RazdVersion = if ($Version) { $Version } elseif ($env:RAZD_VERSION) { $env:RAZD_VERSION } else { "latest" }
+$RazdVersion = if ($PreRelease) { "pre-release" } elseif ($Version) { $Version } elseif ($env:RAZD_VERSION) { $env:RAZD_VERSION } else { "latest" }
 $RazdInstallDir = if ($InstallDir) { $InstallDir } elseif ($env:RAZD_INSTALL_DIR) { $env:RAZD_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA "razd" }
 $GithubRepo = "razd-cli/razd"
 $GithubBaseUrl = "https://github.com/$GithubRepo"
@@ -124,6 +125,27 @@ function Get-LatestVersion {
     }
 }
 
+function Get-LatestPrereleaseVersion {
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        $headers = @{}
+        if ($env:GITHUB_TOKEN) {
+            $headers["Authorization"] = "token $env:GITHUB_TOKEN"
+        }
+        $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/$GithubRepo/releases?per_page=10" -Headers $headers -UseBasicParsing
+        foreach ($release in $releases) {
+            if ($release.prerelease) {
+                return $release.tag_name -replace '^v', ''
+            }
+        }
+        return $null
+    }
+    catch {
+        Write-Error "Could not fetch pre-release versions: $_"
+        return $null
+    }
+}
+
 function Get-AvailableVersions {
     param([int]$Count = 20)
     try {
@@ -162,10 +184,19 @@ function Get-AvailableVersions {
 
 function Resolve-Version {
     if ($RazdVersion -eq "latest") {
-        Write-Info "Fetching latest razd version..."
+        Write-Info "Fetching latest stable razd version..."
         $version = Get-LatestVersion
         if ($null -eq $version -or $version -eq "") {
             Write-Error "Could not determine latest version. Please specify a version with -Version or `$env:RAZD_VERSION."
+            exit 1
+        }
+        return $version
+    }
+    elseif ($RazdVersion -eq "pre-release") {
+        Write-Info "Fetching latest pre-release razd version..."
+        $version = Get-LatestPrereleaseVersion
+        if ($null -eq $version -or $version -eq "") {
+            Write-Error "Could not find a pre-release version. Check available versions with -List."
             exit 1
         }
         return $version
@@ -295,23 +326,25 @@ function Show-Help {
     Write-Host "  .\install.ps1 [OPTIONS]"
     Write-Host ""
     Write-Host "Options:" -ForegroundColor White
-    Write-Host "  -Version VERSION   Install specific version (default: latest)"
-    Write-Host "  -List               List available versions"
-    Write-Host "  -ListCount N        Number of versions to list (default: 20)"
-    Write-Host "  -InstallDir DIR     Installation directory (default: %LOCALAPPDATA%\razd)"
-    Write-Host "  -Help               Show this help message"
+    Write-Host "  -Version VERSION    Install specific version (default: latest stable)"
+    Write-Host "  -PreRelease          Install latest pre-release version"
+    Write-Host "  -List                List available versions"
+    Write-Host "  -ListCount N         Number of versions to list (default: 20)"
+    Write-Host "  -InstallDir DIR      Installation directory (default: %LOCALAPPDATA%\razd)"
+    Write-Host "  -Help                Show help message"
     Write-Host ""
     Write-Host "Environment Variables:" -ForegroundColor White
-    Write-Host "  RAZD_VERSION        Version to install (default: latest)"
-    Write-Host "  RAZD_INSTALL_DIR    Installation directory"
-    Write-Host "  GITHUB_TOKEN        GitHub token to avoid rate limiting"
+    Write-Host "  RAZD_VERSION         Version to install (default: latest)"
+    Write-Host "  RAZD_INSTALL_DIR      Installation directory"
+    Write-Host "  GITHUB_TOKEN          GitHub token to avoid rate limiting"
     Write-Host ""
     Write-Host "Examples:" -ForegroundColor White
-    Write-Host "  .\install.ps1                                # Install latest version"
-    Write-Host "  .\install.ps1 -Version 1.0.0                 # Install specific version"
-    Write-Host "  .\install.ps1 -Version 1.0.0-dev.0           # Install pre-release"
-    Write-Host "  .\install.ps1 -List                          # List available versions"
-    Write-Host "  .\install.ps1 -List -ListCount 50            # List up to 50 versions"
+    Write-Host "  .\install.ps1                                    # Install latest stable version"
+    Write-Host "  .\install.ps1 -PreRelease                        # Install latest pre-release"
+    Write-Host "  .\install.ps1 -Version 1.0.0                     # Install specific version"
+    Write-Host "  .\install.ps1 -Version 1.0.0-dev.0                # Install pre-release by tag"
+    Write-Host "  .\install.ps1 -List                               # List available versions"
+    Write-Host "  .\install.ps1 -List -ListCount 50                 # List up to 50 versions"
     Write-Host ""
 }
 
