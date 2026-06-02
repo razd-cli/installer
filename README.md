@@ -30,42 +30,102 @@ The installer will:
 3. **Install to PATH** — Place the binary in `~/.local/bin` (Linux/macOS) or `%LOCALAPPDATA%\razd` (Windows)
 4. **Configure PATH** — Offer to add the install directory to your shell's rc file if needed
 
-## Install a Specific Version
+## List Available Versions
 
-Set the `RAZD_VERSION` environment variable before running the installer:
+See all releases on GitHub before installing:
 
 ### Linux / macOS
 
 ```bash
-RAZD_VERSION=1.0.0 curl -fsSL https://get.razd-cli.com/install.sh | bash
-```
-
-### Install a pre-release version
-
-```bash
-RAZD_VERSION=1.0.0-dev.0 curl -fsSL https://get.razd-cli.com/install.sh | bash
+./install.sh --list
+./install.sh --list 50
 ```
 
 ### Windows (PowerShell)
 
 ```powershell
-$env:RAZD_VERSION = "1.0.0"; irm https://get.razd-cli.com/install.ps1 | iex
+.\install.ps1 -List
+.\install.ps1 -List -ListCount 50
 ```
 
-## Custom Install Location
+## Install a Specific Version
 
-Set the `RAZD_INSTALL_DIR` environment variable:
+### Linux / macOS
+
+```bash
+# Using environment variable (works with piped curl)
+RAZD_VERSION=1.0.0 curl -fsSL https://get.razd-cli.com/install.sh | bash
+
+# Using command-line flag (when running directly)
+./install.sh --version 1.0.0
+./install.sh -v 1.0.0-dev.0
+```
+
+### Windows (PowerShell)
+
+```powershell
+# Using environment variable
+$env:RAZD_VERSION = "1.0.0"; irm https://get.razd-cli.com/install.ps1 | iex
+
+# Using parameter (when running directly)
+.\install.ps1 -Version 1.0.0
+.\install.ps1 -Version 1.0.0-dev.0
+```
+
+Pre-release versions (containing a `-` suffix like `1.0.0-dev.0`) are marked with a warning during installation.
+
+## Custom Install Location
 
 ### Linux / macOS
 
 ```bash
 RAZD_INSTALL_DIR=/usr/local/bin curl -fsSL https://get.razd-cli.com/install.sh | bash
+# or
+./install.sh --dir /usr/local/bin
 ```
 
 ### Windows (PowerShell)
 
 ```powershell
 $env:RAZD_INSTALL_DIR = "C:\Tools\razd"; irm https://get.razd-cli.com/install.ps1 | iex
+# or
+.\install.ps1 -InstallDir "C:\Tools\razd"
+```
+
+## CLI Reference
+
+### install.sh
+
+```
+Usage:
+  ./install.sh [OPTIONS]
+
+Options:
+  -v, --version VERSION  Install specific version (default: latest)
+  -l, --list [N]         List available versions (default: 20)
+  -d, --dir DIR          Installation directory (default: ~/.local/bin)
+  -h, --help             Show help message
+
+Environment Variables:
+  RAZD_VERSION           Version to install (default: latest)
+  RAZD_INSTALL_DIR       Installation directory
+  GITHUB_TOKEN            GitHub token to avoid rate limiting
+```
+
+### install.ps1
+
+```
+Options:
+  -Version VERSION    Install specific version (default: latest)
+  -List               List available versions
+  -ListCount N        Number of versions to list (default: 20)
+  -InstallDir DIR     Installation directory
+  -Help               Show help message
+
+Environment Variables:
+  RAZD_VERSION         Version to install
+  RAZD_INSTALL_DIR     Installation directory
+  GITHUB_TOKEN          GitHub token to avoid rate limiting
 ```
 
 ## Prerequisites
@@ -81,11 +141,11 @@ $env:RAZD_INSTALL_DIR = "C:\Tools\razd"; irm https://get.razd-cli.com/install.ps
 
 ## Supported Platforms
 
-| Platform | Architecture | Status       |
-| -------- | ------------ | ------------ |
-| Linux    | x64, arm64   | Supported    |
-| macOS    | x64, arm64   | Supported    |
-| Windows  | x64, arm64   | Supported    |
+| Platform | Architecture | Status    |
+| -------- | ------------ | --------- |
+| Linux    | x64, arm64   | Supported |
+| macOS    | x64, arm64   | Supported |
+| Windows  | x64, arm64   | Supported |
 
 ## Troubleshooting
 
@@ -101,6 +161,14 @@ The installer offers to add the install directory to your shell's rc file. If yo
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
+```
+
+### GitHub API rate limiting
+
+If you hit rate limits, set the `GITHUB_TOKEN` environment variable:
+
+```bash
+GITHUB_TOKEN=ghp_xxx curl -fsSL https://get.razd-cli.com/install.sh | bash
 ```
 
 ## License

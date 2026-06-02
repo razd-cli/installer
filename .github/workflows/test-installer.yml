@@ -41,6 +41,12 @@ jobs:
           razd --version
           echo "✓ razd is installed"
 
+      - name: Test --list flag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ./install.sh --list
+
   test-macos:
     name: macOS (Bash)
     runs-on: macos-latest

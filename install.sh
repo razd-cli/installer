@@ -5,10 +5,14 @@
 #
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/razd-cli/installer/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/razd-cli/installer/main/install.sh | bash -s -- --version 1.0.0
+#   ./install.sh --list
+#   ./install.sh --version 1.0.0-dev.0
 #
 # Environment Variables:
-#   RAZD_VERSION - Version to install (default: "latest")
+#   RAZD_VERSION    - Version to install (default: "latest")
 #   RAZD_INSTALL_DIR - Installation directory (default: ~/.local/bin)
+#   GITHUB_TOKEN     - GitHub token to avoid rate limiting
 #
 
 set -euo pipefail
@@ -31,6 +35,7 @@ GREEN='\033[0;32m'
 BLUE='\033[1;34m'
 CYAN='\033[0;36m'
 YELLOW='\033[0;33m'
+BOLD='\033[1m'
 NC='\033[0m'
 
 # =============================================================================
@@ -86,35 +91,67 @@ detect_arch() {
     esac
 }
 
-get_latest_version() {
-    local auth_header=""
+github_api_get() {
+    local endpoint="$1"
+    local url="https://api.github.com${endpoint}"
     if [ -n "${GITHUB_TOKEN:-}" ]; then
-        auth_header="Authorization: token $GITHUB_TOKEN"
-    fi
-
-    local api_url="https://api.github.com/repos/${GITHUB_REPO}/releases/latest"
-
-    local version=""
-    if [ -n "$auth_header" ]; then
-        version=$(curl -fsSL -H "$auth_header" "$api_url" 2>/dev/null | grep '"tag_name"' | sed -E 's/.*"tag_name": *"v?([^"]+)".*/\1/')
+        curl -fsSL -H "Authorization: token ${GITHUB_TOKEN}" "$url" 2>/dev/null
     else
-        version=$(curl -fsSL "$api_url" 2>/dev/null | grep '"tag_name"' | sed -E 's/.*"tag_name": *"v?([^"]+)".*/\1/')
+        curl -fsSL "$url" 2>/dev/null
     fi
+}
 
+get_latest_version() {
+    local version
+    version=$(github_api_get "/repos/${GITHUB_REPO}/releases/latest" | grep '"tag_name"' | sed -E 's/.*"tag_name": *"v?([^"]+)".*/\1/')
     echo "$version"
 }
 
+list_versions() {
+    local limit="${1:-20}"
+    step "Fetching available razd versions..."
+    echo ""
+
+    local json
+    json=$(github_api_get "/repos/${GITHUB_REPO}/releases?per_page=${limit}")
+    if [ -z "$json" ]; then
+        error "Could not fetch releases from GitHub API"
+    fi
+
+    echo -e "  ${BOLD}Available versions:${NC}"
+    echo ""
+
+    echo "$json" | grep -E '"(tag_name)"|"(prerelease)"' | while read -r tag_line; do
+        read -r pre_line
+        local tag=$(echo "$tag_line" | sed -E 's/.*"tag_name": *"v?([^"]+)".*/\1/')
+        local pre=$(echo "$pre_line" | sed -E 's/.*"prerelease": *(true|false).*/\1/')
+        local label=""
+        if [ "$pre" = "true" ]; then
+            label=" (pre-release)"
+        fi
+        echo -e "  ${GREEN}${tag}${NC}${label}"
+    done
+
+    echo ""
+    info "Install a specific version:"
+    echo "" >&2
+    echo -e "  ${CYAN}RAZD_VERSION=1.0.0${NC} ./install.sh" >&2
+    echo -e "  ${CYAN}./install.sh --version 1.0.0-dev.0${NC}" >&2
+    echo ""
+}
+
 resolve_version() {
-    if [ "$RAZD_VERSION" = "latest" ]; then
+    local version_input="$1"
+    if [ "$version_input" = "latest" ]; then
         info "Fetching latest razd version..."
         local version
         version=$(get_latest_version)
         if [ -z "$version" ]; then
-            error "Could not determine latest version. Please specify a version with RAZD_VERSION."
+            error "Could not determine latest version. Please specify a version with --version or RAZD_VERSION."
         fi
         echo "$version"
     else
-        echo "$RAZD_VERSION"
+        echo "$version_input"
     fi
 }
 
@@ -144,10 +181,11 @@ get_download_url() {
 # =============================================================================
 
 install_razd() {
+    local version_input="$1"
     step "Installing razd..."
 
     local version
-    version=$(resolve_version)
+    version=$(resolve_version "$version_input")
     local tag
     tag=$(get_tag "$version")
     local prerelease
@@ -267,10 +305,87 @@ add_to_path_if_interactive() {
 }
 
 # =============================================================================
+# Help
+# =============================================================================
+
+show_help() {
+    echo ""
+    echo -e "${BOLD}Razd CLI Installer${NC}"
+    echo ""
+    echo "Usage:"
+    echo "  ./install.sh [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  -v, --version VERSION  Install specific version (default: latest)"
+    echo "  -l, --list [N]        List available versions (default: 20)"
+    echo "  -d, --dir DIR         Installation directory (default: ~/.local/bin)"
+    echo "  -h, --help            Show this help message"
+    echo ""
+    echo "Environment Variables:"
+    echo "  RAZD_VERSION          Version to install (default: latest)"
+    echo "  RAZD_INSTALL_DIR      Installation directory (default: ~/.local/bin)"
+    echo "  GITHUB_TOKEN          GitHub token to avoid rate limiting"
+    echo ""
+    echo "Examples:"
+    echo "  ./install.sh                          # Install latest version"
+    echo "  ./install.sh --version 1.0.0          # Install specific version"
+    echo "  ./install.sh --version 1.0.0-dev.0    # Install pre-release"
+    echo "  ./install.sh --list                    # List available versions"
+    echo "  ./install.sh --list 50                 # List up to 50 versions"
+    echo ""
+    echo "Piped usage:"
+    echo "  curl -fsSL <url>/install.sh | bash"
+    echo "  RAZD_VERSION=1.0.0 curl -fsSL <url>/install.sh | bash"
+    echo ""
+}
+
+# =============================================================================
 # Main
 # =============================================================================
 
 main() {
+    local version="${RAZD_VERSION}"
+    local action="install"
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -v|--version)
+                shift
+                if [ $# -eq 0 ]; then
+                    error "Missing argument for --version"
+                fi
+                version="$1"
+                shift
+                ;;
+            -l|--list)
+                local list_count="20"
+                shift
+                if [ $# -gt 0 ] && [[ ! "$1" =~ ^- ]]; then
+                    list_count="$1"
+                    shift
+                fi
+                action="list"
+                list_versions "$list_count"
+                exit 0
+                ;;
+            -d|--dir)
+                shift
+                if [ $# -eq 0 ]; then
+                    error "Missing argument for --dir"
+                fi
+                RAZD_INSTALL_DIR="$1"
+                shift
+                ;;
+            -h|--help)
+                show_help
+                exit 0
+                ;;
+            *)
+                error "Unknown option: $1. Use --help for usage."
+                ;;
+        esac
+    done
+
     echo ""
     echo -e "${BLUE}╔════════════════════════════════════════╗${NC}"
     echo -e "${BLUE}║       Razd CLI Installer               ║${NC}"
@@ -281,7 +396,7 @@ main() {
         error "curl is required but not installed. Please install curl and try again."
     fi
 
-    install_razd
+    install_razd "${version}"
 
     echo ""
     success "Installation complete!"

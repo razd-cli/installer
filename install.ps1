@@ -9,6 +9,12 @@
 .PARAMETER Version
     Version of razd to install. Defaults to "latest".
 
+.PARAMETER List
+    List available versions instead of installing.
+
+.PARAMETER InstallDir
+    Installation directory. Defaults to %LOCALAPPDATA%\razd.
+
 .EXAMPLE
     # Run from PowerShell:
     irm https://raw.githubusercontent.com/razd-cli/installer/main/install.ps1 | iex
@@ -17,9 +23,21 @@
     # Install specific version:
     $env:RAZD_VERSION = "1.0.0"; irm https://raw.githubusercontent.com/razd-cli/installer/main/install.ps1 | iex
 
+.EXAMPLE
+    # List available versions:
+    .\install.ps1 -List
+
 .LINK
     https://github.com/razd-cli/razd
 #>
+
+param(
+    [string]$Version,
+    [switch]$List,
+    [int]$ListCount = 20,
+    [string]$InstallDir,
+    [switch]$Help
+)
 
 $ErrorActionPreference = 'Stop'
 
@@ -27,8 +45,8 @@ $ErrorActionPreference = 'Stop'
 # Configuration
 # =============================================================================
 
-$RazdVersion = if ($env:RAZD_VERSION) { $env:RAZD_VERSION } else { "latest" }
-$RazdInstallDir = if ($env:RAZD_INSTALL_DIR) { $env:RAZD_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA "razd" }
+$RazdVersion = if ($Version) { $Version } elseif ($env:RAZD_VERSION) { $env:RAZD_VERSION } else { "latest" }
+$RazdInstallDir = if ($InstallDir) { $InstallDir } elseif ($env:RAZD_INSTALL_DIR) { $env:RAZD_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA "razd" }
 $GithubRepo = "razd-cli/razd"
 $GithubBaseUrl = "https://github.com/$GithubRepo"
 
@@ -77,15 +95,26 @@ function Get-SystemArchitecture {
     }
 }
 
-function Get-LatestVersion {
+function Invoke-GitHubApi {
+    param([string]$Endpoint)
     try {
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         $headers = @{}
         if ($env:GITHUB_TOKEN) {
             $headers["Authorization"] = "token $env:GITHUB_TOKEN"
         }
-        
-        $releaseInfo = Invoke-RestMethod -Uri "https://api.github.com/repos/$GithubRepo/releases/latest" -Headers $headers -UseBasicParsing
+        return Invoke-RestMethod -Uri "https://api.github.com$Endpoint" -Headers $headers -UseBasicParsing
+    }
+    catch {
+        Write-Error "GitHub API request failed: $_"
+        return $null
+    }
+}
+
+function Get-LatestVersion {
+    try {
+        $releaseInfo = Invoke-GitHubApi -Endpoint "/repos/$GithubRepo/releases/latest"
+        if ($null -eq $releaseInfo) { return $null }
         $version = $releaseInfo.tag_name -replace '^v', ''
         return $version
     }
@@ -95,12 +124,48 @@ function Get-LatestVersion {
     }
 }
 
+function Get-AvailableVersions {
+    param([int]$Count = 20)
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        $headers = @{}
+        if ($env:GITHUB_TOKEN) {
+            $headers["Authorization"] = "token $env:GITHUB_TOKEN"
+        }
+        
+        $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/$GithubRepo/releases?per_page=$Count" -Headers $headers -UseBasicParsing
+        
+        Write-Host ""
+        Write-Host "  Available versions:" -ForegroundColor White
+        Write-Host ""
+        
+        foreach ($release in $releases) {
+            $ver = $release.tag_name -replace '^v', ''
+            $preLabel = if ($release.prerelease) { " (pre-release)" } else { "" }
+            $color = if ($release.prerelease) { "Yellow" } else { "Green" }
+            Write-Host "  " -NoNewline
+            Write-Host $ver -ForegroundColor $color -NoNewline
+            Write-Host $preLabel
+        }
+        
+        Write-Host ""
+        Write-Info "Install a specific version:"
+        Write-Host ""
+        Write-Host "  .\install.ps1 -Version 1.0.0" -ForegroundColor Cyan
+        Write-Host "  .\install.ps1 -Version 1.0.0-dev.0" -ForegroundColor Cyan
+        Write-Host ""
+    }
+    catch {
+        Write-Error "Could not fetch releases: $_"
+    }
+}
+
 function Resolve-Version {
     if ($RazdVersion -eq "latest") {
         Write-Info "Fetching latest razd version..."
         $version = Get-LatestVersion
         if ($null -eq $version -or $version -eq "") {
-            Write-Error "Could not determine latest version. Please specify a version with `$env:RAZD_VERSION."
+            Write-Error "Could not determine latest version. Please specify a version with -Version or `$env:RAZD_VERSION."
             exit 1
         }
         return $version
@@ -219,25 +284,63 @@ function Install-Razd {
 }
 
 # =============================================================================
-# Main
+# Help
 # =============================================================================
 
-function Main {
+function Show-Help {
     Write-Host ""
-    Write-Host "+----------------------------------------+" -ForegroundColor Blue
-    Write-Host "|       Razd CLI Installer               |" -ForegroundColor Blue
-    Write-Host "+----------------------------------------+" -ForegroundColor Blue
+    Write-Host "Razd CLI Installer" -ForegroundColor White
     Write-Host ""
-    
-    Install-Razd
-    
+    Write-Host "Usage:" -ForegroundColor White
+    Write-Host "  .\install.ps1 [OPTIONS]"
     Write-Host ""
-    Write-Info "You may need to restart your terminal for PATH changes to take effect."
+    Write-Host "Options:" -ForegroundColor White
+    Write-Host "  -Version VERSION   Install specific version (default: latest)"
+    Write-Host "  -List               List available versions"
+    Write-Host "  -ListCount N        Number of versions to list (default: 20)"
+    Write-Host "  -InstallDir DIR     Installation directory (default: %LOCALAPPDATA%\razd)"
+    Write-Host "  -Help               Show this help message"
     Write-Host ""
-    Write-Success "Installation complete!"
+    Write-Host "Environment Variables:" -ForegroundColor White
+    Write-Host "  RAZD_VERSION        Version to install (default: latest)"
+    Write-Host "  RAZD_INSTALL_DIR    Installation directory"
+    Write-Host "  GITHUB_TOKEN        GitHub token to avoid rate limiting"
     Write-Host ""
-    Write-Info "Run 'razd --help' to get started."
+    Write-Host "Examples:" -ForegroundColor White
+    Write-Host "  .\install.ps1                                # Install latest version"
+    Write-Host "  .\install.ps1 -Version 1.0.0                 # Install specific version"
+    Write-Host "  .\install.ps1 -Version 1.0.0-dev.0           # Install pre-release"
+    Write-Host "  .\install.ps1 -List                          # List available versions"
+    Write-Host "  .\install.ps1 -List -ListCount 50            # List up to 50 versions"
     Write-Host ""
 }
 
-Main
+# =============================================================================
+# Main
+# =============================================================================
+
+if ($Help) {
+    Show-Help
+    exit 0
+}
+
+if ($List) {
+    Get-AvailableVersions -Count $ListCount
+    exit 0
+}
+
+Write-Host ""
+Write-Host "+----------------------------------------+" -ForegroundColor Blue
+Write-Host "|       Razd CLI Installer               |" -ForegroundColor Blue
+Write-Host "+----------------------------------------+" -ForegroundColor Blue
+Write-Host ""
+
+Install-Razd
+
+Write-Host ""
+Write-Info "You may need to restart your terminal for PATH changes to take effect."
+Write-Host ""
+Write-Success "Installation complete!"
+Write-Host ""
+Write-Info "Run 'razd --help' to get started."
+Write-Host ""
