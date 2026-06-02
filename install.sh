@@ -38,19 +38,19 @@ NC='\033[0m'
 # =============================================================================
 
 step() {
-    echo -e "${BLUE}==>${NC} ${BLUE}$1${NC}"
+    echo -e "${BLUE}==>${NC} ${BLUE}$1${NC}" >&2
 }
 
 info() {
-    echo -e "${CYAN}   $1${NC}"
+    echo -e "${CYAN}   $1${NC}" >&2
 }
 
 success() {
-    echo -e "${GREEN}✓${NC} $1"
+    echo -e "${GREEN}✓${NC} $1" >&2
 }
 
 warn() {
-    echo -e "${YELLOW}⚠${NC} $1"
+    echo -e "${YELLOW}⚠${NC} $1" >&2
 }
 
 error() {
