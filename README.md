@@ -25,10 +25,10 @@ irm https://get.razd-cli.com/install.ps1 | iex
 
 The installer will:
 
-1. **Check for mise** — [mise](https://mise.jdx.dev) is required to manage razd versions
-2. **Install mise** — If not already installed (via `curl https://mise.run | sh` on Unix, or `winget`/direct download on Windows)
-3. **Install razd** — Using `mise use -g razd@latest`
-4. **Print activation instructions** — Shows the command to add to your shell's rc file
+1. **Detect platform** — Automatically determine your OS and architecture
+2. **Download razd** — Fetch the binary from [GitHub Releases](https://github.com/razd-cli/razd/releases)
+3. **Install to PATH** — Place the binary in `~/.local/bin` (Linux/macOS) or `%LOCALAPPDATA%\razd` (Windows)
+4. **Configure PATH** — Offer to add the install directory to your shell's rc file if needed
 
 ## Install a Specific Version
 
@@ -40,10 +40,32 @@ Set the `RAZD_VERSION` environment variable before running the installer:
 RAZD_VERSION=1.0.0 curl -fsSL https://get.razd-cli.com/install.sh | bash
 ```
 
+### Install a pre-release version
+
+```bash
+RAZD_VERSION=1.0.0-dev.0 curl -fsSL https://get.razd-cli.com/install.sh | bash
+```
+
 ### Windows (PowerShell)
 
 ```powershell
 $env:RAZD_VERSION = "1.0.0"; irm https://get.razd-cli.com/install.ps1 | iex
+```
+
+## Custom Install Location
+
+Set the `RAZD_INSTALL_DIR` environment variable:
+
+### Linux / macOS
+
+```bash
+RAZD_INSTALL_DIR=/usr/local/bin curl -fsSL https://get.razd-cli.com/install.sh | bash
+```
+
+### Windows (PowerShell)
+
+```powershell
+$env:RAZD_INSTALL_DIR = "C:\Tools\razd"; irm https://get.razd-cli.com/install.ps1 | iex
 ```
 
 ## Prerequisites
@@ -51,68 +73,35 @@ $env:RAZD_VERSION = "1.0.0"; irm https://get.razd-cli.com/install.ps1 | iex
 ### Linux / macOS
 
 - `curl` (pre-installed on most systems)
-- `bash` or compatible shell
+- `tar` (pre-installed on most systems)
 
 ### Windows
 
 - PowerShell 5.1 or later (pre-installed on Windows 10+)
-- Optional: `winget` for preferred mise installation method
 
 ## Supported Platforms
 
 | Platform | Architecture | Status       |
 | -------- | ------------ | ------------ |
-| Linux    | x64, arm64   | ✅ Supported |
-| macOS    | x64, arm64   | ✅ Supported |
-| Windows  | x64, arm64   | ✅ Supported |
-
-## Post-Installation
-
-After installation, you need to activate mise in your shell for razd to work.
-
-### Bash
-
-Add to `~/.bashrc`:
-
-```bash
-eval "$(mise activate bash)"
-```
-
-### Zsh
-
-Add to `~/.zshrc`:
-
-```bash
-eval "$(mise activate zsh)"
-```
-
-### Fish
-
-Add to `~/.config/fish/config.fish`:
-
-```fish
-mise activate fish | source
-```
-
-### PowerShell
-
-Add to your `$PROFILE`:
-
-```powershell
-mise activate pwsh | Invoke-Expression
-```
+| Linux    | x64, arm64   | Supported    |
+| macOS    | x64, arm64   | Supported    |
+| Windows  | x64, arm64   | Supported    |
 
 ## Troubleshooting
 
 ### "razd: command not found" after installation
 
-1. Make sure you've added the mise activation line to your shell's rc file
+1. Make sure the install directory is in your PATH
 2. Restart your terminal or source your rc file
-3. Run `mise doctor` to diagnose issues
+3. Check the install location: `~/.local/bin/razd` (Linux/macOS) or `%LOCALAPPDATA%\razd\razd.exe` (Windows)
 
-### mise not found after installation
+### PATH not updated
 
-The installer adds mise to your PATH, but you may need to restart your terminal for changes to take effect.
+The installer offers to add the install directory to your shell's rc file. If you skipped this, you can add it manually:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
 
 ## License
 

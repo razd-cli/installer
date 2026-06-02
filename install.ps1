@@ -4,7 +4,7 @@
     Razd CLI Installer for Windows
 
 .DESCRIPTION
-    Installs mise (if needed) and razd CLI tool.
+    Installs razd CLI tool by downloading the binary from GitHub Releases.
     
 .PARAMETER Version
     Version of razd to install. Defaults to "latest".
@@ -28,11 +28,9 @@ $ErrorActionPreference = 'Stop'
 # =============================================================================
 
 $RazdVersion = if ($env:RAZD_VERSION) { $env:RAZD_VERSION } else { "latest" }
-$MiseBinPath = Join-Path $env:LOCALAPPDATA "mise\bin"
-$MiseExePath = Join-Path $MiseBinPath "mise.exe"
-
-# razd plugin for mise
-$RazdPluginUrl = "https://github.com/razd-cli/vfox-plugin-razd"
+$RazdInstallDir = if ($env:RAZD_INSTALL_DIR) { $env:RAZD_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA "razd" }
+$GithubRepo = "razd-cli/razd"
+$GithubBaseUrl = "https://github.com/$GithubRepo"
 
 # =============================================================================
 # Output Functions
@@ -71,27 +69,15 @@ function Write-Error {
 # Utility Functions
 # =============================================================================
 
-function Invoke-Mise {
-    # Run mise command while suppressing stderr warnings that would cause errors
-    param([Parameter(ValueFromRemainingArguments = $true)]$Arguments)
-    $prevErrorActionPreference = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-    try {
-        & mise @Arguments 2>&1 | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] }
-    }
-    finally {
-        $ErrorActionPreference = $prevErrorActionPreference
+function Get-SystemArchitecture {
+    $arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
+    switch ($arch) {
+        'Arm64' { return 'arm64' }
+        default { return 'amd64' }
     }
 }
 
-function Test-CommandExists {
-    param([string]$Command)
-    $null -ne (Get-Command $Command -ErrorAction SilentlyContinue)
-}
-
-function Get-LatestRazdVersion {
-    # Fetch latest version from GitHub API
-    # Use GITHUB_TOKEN if available to avoid rate limiting
+function Get-LatestVersion {
     try {
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         $headers = @{}
@@ -99,23 +85,45 @@ function Get-LatestRazdVersion {
             $headers["Authorization"] = "token $env:GITHUB_TOKEN"
         }
         
-        $releaseInfo = Invoke-RestMethod -Uri "https://api.github.com/repos/razd-cli/razd/releases/latest" -Headers $headers -UseBasicParsing
+        $releaseInfo = Invoke-RestMethod -Uri "https://api.github.com/repos/$GithubRepo/releases/latest" -Headers $headers -UseBasicParsing
         $version = $releaseInfo.tag_name -replace '^v', ''
         return $version
     }
     catch {
-        Write-Warning "Could not fetch latest version: $_"
+        Write-Error "Could not fetch latest version: $_"
         return $null
     }
 }
 
-function Get-SystemArchitecture {
-    # Detect system architecture for download URL
-    $arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
-    switch ($arch) {
-        'Arm64' { return 'arm64' }
-        default { return 'x64' }
+function Resolve-Version {
+    if ($RazdVersion -eq "latest") {
+        Write-Info "Fetching latest razd version..."
+        $version = Get-LatestVersion
+        if ($null -eq $version -or $version -eq "") {
+            Write-Error "Could not determine latest version. Please specify a version with `$env:RAZD_VERSION."
+            exit 1
+        }
+        return $version
     }
+    return $RazdVersion
+}
+
+function Get-Tag {
+    param([string]$Version)
+    return "v$Version"
+}
+
+function Test-Prerelease {
+    param([string]$Version)
+    return $Version -match '-'
+}
+
+function Get-DownloadUrl {
+    param(
+        [string]$Tag,
+        [string]$Arch
+    )
+    return "$GithubBaseUrl/releases/download/$Tag/razd_windows_$Arch.zip"
 }
 
 function Add-ToPath {
@@ -124,12 +132,10 @@ function Add-ToPath {
         [switch]$Persistent
     )
     
-    # Add to current session
     if ($env:Path -notlike "*$Path*") {
         $env:Path = "$Path;$env:Path"
     }
     
-    # Add to persistent user PATH
     if ($Persistent) {
         $currentPath = [Environment]::GetEnvironmentVariable('Path', 'User')
         if ($currentPath -notlike "*$Path*") {
@@ -140,311 +146,75 @@ function Add-ToPath {
 }
 
 # =============================================================================
-# Mise Installation
+# Installation
 # =============================================================================
-
-function Install-MiseViaWinget {
-    Write-Info "Attempting installation via winget..."
-    
-    try {
-        $result = winget install jdx.mise --accept-package-agreements --accept-source-agreements 2>&1
-        if ($LASTEXITCODE -eq 0) {
-            return $true
-        }
-        # Check if already installed
-        if ($result -match "already installed") {
-            return $true
-        }
-    }
-    catch {
-        # winget failed, will try fallback
-    }
-    
-    return $false
-}
-
-function Install-MiseViaDirectDownload {
-    Write-Info "Downloading mise from GitHub releases..."
-    
-    $arch = Get-SystemArchitecture
-    $tempDir = Join-Path $env:TEMP "mise-install-$(Get-Random)"
-    $zipFile = Join-Path $tempDir "mise.zip"
-    
-    try {
-        # Create temp directory
-        New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
-        
-        # Set TLS 1.2 for all requests
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-        
-        # Fetch latest release info from GitHub API to get correct asset URL
-        # (mise includes version in filename, so /latest/download/ redirect doesn't work)
-        Write-Info "Fetching latest release info..."
-        $releaseInfo = Invoke-RestMethod -Uri "https://api.github.com/repos/jdx/mise/releases/latest" -UseBasicParsing
-        
-        # Find the Windows asset for our architecture
-        $assetPattern = "mise-.*-windows-$arch\.zip$"
-        $asset = $releaseInfo.assets | Where-Object { $_.name -match $assetPattern } | Select-Object -First 1
-        
-        if ($null -eq $asset) {
-            throw "Could not find Windows $arch asset in latest mise release"
-        }
-        
-        $downloadUrl = $asset.browser_download_url
-        Write-Info "Downloading from: $downloadUrl"
-        
-        # Download the ZIP file
-        Invoke-WebRequest -Uri $downloadUrl -OutFile $zipFile -UseBasicParsing
-        
-        # Create mise bin directory
-        if (-not (Test-Path $MiseBinPath)) {
-            New-Item -ItemType Directory -Path $MiseBinPath -Force | Out-Null
-        }
-        
-        # Extract ZIP
-        Write-Info "Extracting mise..."
-        Expand-Archive -Path $zipFile -DestinationPath $tempDir -Force
-        
-        # Find mise.exe in extracted contents (might be in a subdirectory)
-        $miseExe = Get-ChildItem -Path $tempDir -Filter "mise.exe" -Recurse | Select-Object -First 1
-        if ($null -eq $miseExe) {
-            throw "mise.exe not found in downloaded archive"
-        }
-        
-        # Copy to final location
-        Copy-Item -Path $miseExe.FullName -Destination $MiseExePath -Force
-        
-        # Add to PATH (session and persistent)
-        Add-ToPath -Path $MiseBinPath -Persistent
-        
-        Write-Success "mise installed to: $MiseBinPath"
-        return $true
-    }
-    catch {
-        Write-Error "Failed to download mise: $_"
-        return $false
-    }
-    finally {
-        # Cleanup temp files
-        if (Test-Path $tempDir) {
-            Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
-        }
-    }
-}
-
-function Install-Mise {
-    Write-Step "Checking for mise..."
-    
-    # Check if mise is already installed
-    if (Test-CommandExists "mise") {
-        $version = Invoke-Mise --version
-        Write-Success "mise is already installed ($version)"
-        return $true
-    }
-    
-    # Check if mise exists at expected location but not on PATH
-    if (Test-Path $MiseExePath) {
-        Add-ToPath -Path $MiseBinPath -Persistent
-        Write-Success "mise found at $MiseBinPath (added to PATH)"
-        return $true
-    }
-    
-    Write-Step "Installing mise..."
-    
-    # Try winget first
-    if (Test-CommandExists "winget") {
-        if (Install-MiseViaWinget) {
-            # Winget installs mise but doesn't update current session PATH
-            # We need to find where mise was installed and add it to PATH
-            
-            # Refresh PATH from system environment
-            $machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
-            $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-            $env:Path = "$machinePath;$userPath"
-            
-            # Common winget installation paths for mise
-            $possiblePaths = @(
-                (Join-Path $env:LOCALAPPDATA "Programs\mise\bin"),
-                (Join-Path $env:LOCALAPPDATA "mise\bin"),
-                (Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Packages" "jdx.mise_*\mise*"),
-                (Join-Path $env:ProgramFiles "mise\bin")
-            )
-            
-            foreach ($pattern in $possiblePaths) {
-                $resolved = Get-Item $pattern -ErrorAction SilentlyContinue | Select-Object -First 1
-                if ($resolved) {
-                    $misePath = if ($resolved.PSIsContainer) { $resolved.FullName } else { Split-Path $resolved.FullName -Parent }
-                    if (Test-Path (Join-Path $misePath "mise.exe")) {
-                        Add-ToPath -Path $misePath -Persistent
-                        Write-Success "mise installed via winget"
-                        return $true
-                    }
-                }
-            }
-            
-            # If mise is now in PATH after refresh, we're good
-            if (Test-CommandExists "mise") {
-                Write-Success "mise installed via winget"
-                return $true
-            }
-            
-            Write-Warning "winget installed mise but could not locate it, trying direct download..."
-        }
-        else {
-            Write-Warning "winget installation failed, trying direct download..."
-        }
-    }
-    else {
-        Write-Info "winget not available, using direct download..."
-    }
-    
-    # Fallback to direct download
-    if (Install-MiseViaDirectDownload) {
-        return $true
-    }
-    
-    Write-Error "Failed to install mise"
-    return $false
-}
-
-# =============================================================================
-# Task Installation
-# =============================================================================
-
-function Install-Task {
-    Write-Step "Installing task..."
-    
-    # Ensure mise is on PATH
-    if (-not (Test-CommandExists "mise")) {
-        Write-Error "mise is not available."
-        return $false
-    }
-    
-    # Check if task is already installed globally
-    $globalTools = Invoke-Mise list -g
-    if ($globalTools -match "^task") {
-        Write-Success "task is already installed globally"
-        return $true
-    }
-    
-    Write-Info "Installing task (go-task runner)..."
-    
-    try {
-        # First install task
-        Invoke-Mise install task@latest
-        if ($LASTEXITCODE -ne 0) {
-            Write-Warning "Failed to install task. You can install it manually with: mise install task@latest"
-            return $true
-        }
-        
-        # Then set it globally
-        Invoke-Mise use -g task@latest -y
-        if ($LASTEXITCODE -ne 0) {
-            Write-Warning "Failed to set task globally. You can set it manually with: mise use -g task@latest"
-            return $true
-        }
-        
-        Write-Success "task installed successfully"
-        return $true
-    }
-    catch {
-        Write-Warning "Failed to install task: $_. You can install it manually with: mise install task@latest"
-        return $true
-    }
-}
-
-# =============================================================================
-# Razd Installation
-# =============================================================================
-
-function Install-RazdPlugin {
-    Write-Step "Installing razd plugin..."
-    
-    # Check if plugin is already installed
-    $plugins = Invoke-Mise plugin list | Out-String
-    if ($plugins -match "(?m)^razd" -or $plugins -match "\brazd\b") {
-        Write-Success "razd plugin is already installed"
-        return $true
-    }
-    
-    Write-Info "Adding razd plugin from $RazdPluginUrl"
-    
-    try {
-        Invoke-Mise plugin install razd $RazdPluginUrl
-        if ($LASTEXITCODE -ne 0) {
-            throw "mise plugin install command failed with exit code $LASTEXITCODE"
-        }
-        Write-Success "razd plugin installed successfully"
-        return $true
-    }
-    catch {
-        Write-Error "Failed to install razd plugin: $_"
-        return $false
-    }
-}
 
 function Install-Razd {
     Write-Step "Installing razd..."
     
-    # Ensure mise is on PATH
-    if (-not (Test-CommandExists "mise")) {
-        # Try known locations
-        $possiblePaths = @(
-            $MiseBinPath,
-            (Join-Path $env:LOCALAPPDATA "Programs\mise\bin")
-        )
-        
-        foreach ($path in $possiblePaths) {
-            if (Test-Path (Join-Path $path "mise.exe")) {
-                Add-ToPath -Path $path
-                break
-            }
-        }
+    $version = Resolve-Version
+    $tag = Get-Tag -Version $version
+    $isPrerelease = Test-Prerelease -Version $version
+    
+    if ($isPrerelease) {
+        Write-Warning "Installing pre-release version: $version"
     }
     
-    if (-not (Test-CommandExists "mise")) {
-        Write-Error "mise is not available. Please restart your terminal and try again."
-        return $false
-    }
+    Write-Info "Version: $version (tag: $tag)"
     
-    # Install razd plugin first
-    if (-not (Install-RazdPlugin)) {
-        return $false
-    }
+    $arch = Get-SystemArchitecture
+    Write-Info "Platform: windows/$arch"
     
-    # Determine version to install
-    $versionToInstall = $RazdVersion
+    $downloadUrl = Get-DownloadUrl -Tag $tag -Arch $arch
+    Write-Info "Downloading from: $downloadUrl"
     
-    # If "latest" is specified, fetch the actual latest version number
-    # because the vfox plugin doesn't handle "latest" properly
-    if ($RazdVersion -eq "latest") {
-        Write-Info "Fetching latest razd version..."
-        $versionToInstall = Get-LatestRazdVersion
-        if ($null -eq $versionToInstall -or $versionToInstall -eq "") {
-            Write-Warning "Could not fetch latest version, falling back to 'latest'"
-            $versionToInstall = "latest"
-        }
-        else {
-            Write-Info "Latest version: $versionToInstall"
-        }
-    }
+    $tempDir = Join-Path $env:TEMP "razd-install-$(Get-Random)"
+    $zipFile = Join-Path $tempDir "razd.zip"
     
-    $versionArg = "razd@$versionToInstall"
-
-    Write-Info "Installing razd version: $versionToInstall"
-
-    # Install razd globally via mise
     try {
-        Invoke-Mise use -g $versionArg -y
-        if ($LASTEXITCODE -ne 0) {
-            throw "mise use command failed with exit code $LASTEXITCODE"
+        New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+        
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        
+        try {
+            Invoke-WebRequest -Uri $downloadUrl -OutFile $zipFile -UseBasicParsing
         }
-        Write-Success "razd installed successfully"
-        return $true
+        catch {
+            throw "Failed to download razd $version. Check that the version exists at $GithubBaseUrl/releases/tag/$tag"
+        }
+        
+        Write-Info "Extracting..."
+        Expand-Archive -Path $zipFile -DestinationPath $tempDir -Force
+        
+        $razdExe = Get-ChildItem -Path $tempDir -Filter "razd.exe" -Recurse | Select-Object -First 1
+        if ($null -eq $razdExe) {
+            throw "Could not find razd.exe in archive"
+        }
+        
+        if (-not (Test-Path $RazdInstallDir)) {
+            New-Item -ItemType Directory -Path $RazdInstallDir -Force | Out-Null
+        }
+        
+        $targetPath = Join-Path $RazdInstallDir "razd.exe"
+        Copy-Item -Path $razdExe.FullName -Destination $targetPath -Force
+        
+        Add-ToPath -Path $RazdInstallDir -Persistent
+        
+        Write-Success "razd installed to: $targetPath"
+        
+        if (-not (Get-Command "razd" -ErrorAction SilentlyContinue)) {
+            Write-Warning "$RazdInstallDir is not in your PATH"
+            Write-Info "You may need to restart your terminal for PATH changes to take effect."
+        }
     }
     catch {
-        Write-Error "Failed to install razd: $_"
-        return $false
+        Write-Error "Installation failed: $_"
+        exit 1
+    }
+    finally {
+        if (Test-Path $tempDir) {
+            Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
     }
 }
 
@@ -459,63 +229,15 @@ function Main {
     Write-Host "+----------------------------------------+" -ForegroundColor Blue
     Write-Host ""
     
-    # Install mise
-    if (-not (Install-Mise)) {
-        exit 1
-    }
-    
-    # Install task
-    Install-Task | Out-Null
-    
-    # Install razd
-    if (-not (Install-Razd)) {
-        exit 1
-    }
+    Install-Razd
     
     Write-Host ""
-    Write-Step "Post-installation setup"
+    Write-Info "You may need to restart your terminal for PATH changes to take effect."
     Write-Host ""
-    
-    # Add mise activation to PowerShell profile
-    $activationLine = 'mise activate pwsh | Out-String | Invoke-Expression'
-    $profileDir = Split-Path $PROFILE -Parent
-    
-    # Check if activation already exists in profile
-    $alreadyConfigured = $false
-    if (Test-Path $PROFILE) {
-        $profileContent = Get-Content $PROFILE -Raw -ErrorAction SilentlyContinue
-        if ($profileContent -and $profileContent -match "mise activate") {
-            $alreadyConfigured = $true
-            Write-Success "mise activation already configured in PowerShell profile"
-        }
-    }
-    
-    if (-not $alreadyConfigured) {
-        # Create profile directory if needed
-        if (-not (Test-Path $profileDir)) {
-            New-Item -ItemType Directory -Path $profileDir -Force | Out-Null
-        }
-        
-        # Add activation to profile
-        Add-Content -Path $PROFILE -Value "`n# mise activation (added by razd installer)"
-        Add-Content -Path $PROFILE -Value $activationLine
-        Write-Success "Added mise activation to PowerShell profile"
-    }
-    
-    Write-Host ""
-    Write-Info "mise has been added to your PATH."
-    Write-Info "You may need to restart your terminal for changes to take effect."
-    Write-Host ""
-    Write-Info "To activate mise in your current session, run:"
-    Write-Host ""
-    Write-Host "    mise activate pwsh | Invoke-Expression" -ForegroundColor Green
-    Write-Host ""
-    
     Write-Success "Installation complete!"
     Write-Host ""
     Write-Info "Run 'razd --help' to get started."
     Write-Host ""
 }
 
-# Run main
 Main

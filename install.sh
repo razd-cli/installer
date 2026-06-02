@@ -8,6 +8,7 @@
 #
 # Environment Variables:
 #   RAZD_VERSION - Version to install (default: "latest")
+#   RAZD_INSTALL_DIR - Installation directory (default: ~/.local/bin)
 #
 
 set -euo pipefail
@@ -17,10 +18,9 @@ set -euo pipefail
 # =============================================================================
 
 RAZD_VERSION="${RAZD_VERSION:-latest}"
-MISE_INSTALL_URL="https://mise.run"
-
-# razd plugin for mise
-RAZD_PLUGIN_URL="https://github.com/razd-cli/vfox-plugin-razd"
+RAZD_INSTALL_DIR="${RAZD_INSTALL_DIR:-${HOME}/.local/bin}"
+GITHUB_REPO="razd-cli/razd"
+GITHUB_BASE_URL="https://github.com/${GITHUB_REPO}"
 
 # =============================================================================
 # Colors
@@ -31,7 +31,7 @@ GREEN='\033[0;32m'
 BLUE='\033[1;34m'
 CYAN='\033[0;36m'
 YELLOW='\033[0;33m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
 # =============================================================================
 # Output Functions
@@ -66,263 +66,204 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
-get_latest_razd_version() {
-    # Fetch latest version from GitHub API
-    # Use GITHUB_TOKEN if available to avoid rate limiting
+detect_os() {
+    local uname_out
+    uname_out="$(uname -s)"
+    case "${uname_out}" in
+        Linux*) echo "linux" ;;
+        Darwin*) echo "darwin" ;;
+        *) error "Unsupported OS: ${uname_out}" ;;
+    esac
+}
+
+detect_arch() {
+    local uname_m
+    uname_m="$(uname -m)"
+    case "${uname_m}" in
+        x86_64|amd64) echo "amd64" ;;
+        aarch64|arm64) echo "arm64" ;;
+        *) error "Unsupported architecture: ${uname_m}" ;;
+    esac
+}
+
+get_latest_version() {
     local auth_header=""
     if [ -n "${GITHUB_TOKEN:-}" ]; then
         auth_header="Authorization: token $GITHUB_TOKEN"
     fi
-    
+
+    local api_url="https://api.github.com/repos/${GITHUB_REPO}/releases/latest"
+
     local version=""
     if [ -n "$auth_header" ]; then
-        version=$(curl -fsSL -H "$auth_header" "https://api.github.com/repos/razd-cli/razd/releases/latest" 2>/dev/null | grep '"tag_name"' | sed -E 's/.*"tag_name": *"v?([^"]+)".*/\1/')
+        version=$(curl -fsSL -H "$auth_header" "$api_url" 2>/dev/null | grep '"tag_name"' | sed -E 's/.*"tag_name": *"v?([^"]+)".*/\1/')
     else
-        version=$(curl -fsSL "https://api.github.com/repos/razd-cli/razd/releases/latest" 2>/dev/null | grep '"tag_name"' | sed -E 's/.*"tag_name": *"v?([^"]+)".*/\1/')
+        version=$(curl -fsSL "$api_url" 2>/dev/null | grep '"tag_name"' | sed -E 's/.*"tag_name": *"v?([^"]+)".*/\1/')
     fi
-    
+
     echo "$version"
 }
 
-# =============================================================================
-# Mise Installation
-# =============================================================================
-
-install_mise() {
-    step "Checking for mise..."
-
-    if command_exists mise; then
-        success "mise is already installed ($(mise --version))"
-        return 0
-    fi
-
-    step "Installing mise..."
-    
-    if ! command_exists curl; then
-        error "curl is required but not installed. Please install curl and try again."
-    fi
-
-    # Install mise using the official installer
-    curl -fsSL "$MISE_INSTALL_URL" | sh
-
-    # Add mise to PATH for current session
-    # mise installs to ~/.local/bin by default
-    if [ -f "${HOME}/.local/bin/mise" ]; then
-        export PATH="${HOME}/.local/bin:${PATH}"
-        success "mise installed successfully"
-    else
-        error "mise installation failed. Please check the output above."
-    fi
-}
-
-# =============================================================================
-# Mise Activation Check
-# =============================================================================
-
-ensure_mise_activated() {
-    # Check if mise shims are on PATH (indicates mise is activated)
-    # If not, we need to activate it for this session
-    if ! command_exists mise; then
-        if [ -f "${HOME}/.local/bin/mise" ]; then
-            export PATH="${HOME}/.local/bin:${PATH}"
-        else
-            error "mise not found. Installation may have failed."
+resolve_version() {
+    if [ "$RAZD_VERSION" = "latest" ]; then
+        info "Fetching latest razd version..."
+        local version
+        version=$(get_latest_version)
+        if [ -z "$version" ]; then
+            error "Could not determine latest version. Please specify a version with RAZD_VERSION."
         fi
+        echo "$version"
+    else
+        echo "$RAZD_VERSION"
     fi
+}
 
-    # Activate mise for current session so 'mise use -g' works
-    eval "$(mise activate bash 2>/dev/null || true)"
+get_tag() {
+    local version="$1"
+    echo "v${version}"
+}
+
+is_prerelease() {
+    local version="$1"
+    echo "$version" | grep -q '-' && echo "true" || echo "false"
+}
+
+get_download_url() {
+    local tag="$1"
+    local os="$2"
+    local arch="$3"
+    local ext="tar.gz"
+    if [ "$os" = "windows" ]; then
+        ext="zip"
+    fi
+    echo "${GITHUB_BASE_URL}/releases/download/${tag}/razd_${os}_${arch}.${ext}"
 }
 
 # =============================================================================
-# Task Installation
+# Installation
 # =============================================================================
-
-install_task() {
-    step "Installing task..."
-
-    ensure_mise_activated
-
-    # Check if task is already installed globally
-    if mise list -g 2>/dev/null | grep -q "^task"; then
-        success "task is already installed globally"
-        return 0
-    fi
-
-    info "Installing task (go-task runner)..."
-
-    # First install task
-    if ! mise install task@latest 2>&1; then
-        warn "Failed to install task. You can install it manually with: mise install task@latest"
-        return 0
-    fi
-
-    # Then set it globally
-    if ! mise use -g task@latest -y 2>&1; then
-        warn "Failed to set task globally. You can set it manually with: mise use -g task@latest"
-        return 0
-    fi
-
-    success "task installed successfully"
-    return 0
-}
-
-# =============================================================================
-# Razd Installation
-# =============================================================================
-
-install_razd_plugin() {
-    step "Installing razd plugin..."
-
-    # Check if plugin is already installed
-    if mise plugin list 2>/dev/null | grep -q "^razd"; then
-        success "razd plugin is already installed"
-        return 0
-    fi
-
-    info "Adding razd plugin from $RAZD_PLUGIN_URL"
-
-    if ! mise plugin install razd "$RAZD_PLUGIN_URL"; then
-        error "Failed to install razd plugin. Please check the output above."
-    fi
-
-    success "razd plugin installed successfully"
-}
 
 install_razd() {
     step "Installing razd..."
 
-    ensure_mise_activated
-    install_razd_plugin
+    local version
+    version=$(resolve_version)
+    local tag
+    tag=$(get_tag "$version")
+    local prerelease
+    prerelease=$(is_prerelease "$version")
 
-    local version_to_install="$RAZD_VERSION"
-    
-    # If "latest" is specified, fetch the actual latest version number
-    # because the vfox plugin doesn't handle "latest" properly
-    if [ "$RAZD_VERSION" = "latest" ]; then
-        info "Fetching latest razd version..."
-        version_to_install=$(get_latest_razd_version)
-        if [ -z "$version_to_install" ]; then
-            warn "Could not fetch latest version, falling back to 'latest'"
-            version_to_install="latest"
-        else
-            info "Latest version: $version_to_install"
+    if [ "$prerelease" = "true" ]; then
+        warn "Installing pre-release version: ${version}"
+    fi
+
+    info "Version: ${version} (tag: ${tag})"
+
+    local os arch
+    os=$(detect_os)
+    arch=$(detect_arch)
+    info "Platform: ${os}/${arch}"
+
+    local download_url
+    download_url=$(get_download_url "$tag" "$os" "$arch")
+    info "Downloading from: ${download_url}"
+
+    local tmp_dir
+    tmp_dir=$(mktemp -d)
+    local archive="${tmp_dir}/razd.tar.gz"
+
+    if ! curl -fsSL --output "$archive" "$download_url"; then
+        rm -rf "$tmp_dir"
+        error "Failed to download razd ${version}. Check that the version exists at ${GITHUB_BASE_URL}/releases/tag/${tag}"
+    fi
+
+    info "Extracting..."
+    tar -xzf "$archive" -C "$tmp_dir"
+
+    local binary_name="razd"
+
+    local razd_bin="${tmp_dir}/${binary_name}"
+    if [ ! -f "$razd_bin" ]; then
+        razd_bin=$(find "$tmp_dir" -name "${binary_name}" -type f | head -n 1)
+    fi
+
+    if [ ! -f "$razd_bin" ]; then
+        rm -rf "$tmp_dir"
+        error "Could not find razd binary in archive"
+    fi
+
+    chmod +x "$razd_bin"
+
+    mkdir -p "$RAZD_INSTALL_DIR"
+
+    local target="${RAZD_INSTALL_DIR}/${binary_name}"
+    mv "$razd_bin" "$target"
+
+    rm -rf "$tmp_dir"
+
+    success "razd installed to ${target}"
+
+    if ! command_exists razd; then
+        if ! echo ":$PATH:" | grep -q ":${RAZD_INSTALL_DIR}:"; then
+            warn "${RAZD_INSTALL_DIR} is not in your PATH"
+            info "Add it to your PATH:"
+            echo ""
+            echo -e "   ${GREEN}export PATH=\"${RAZD_INSTALL_DIR}:\$PATH\"${NC}"
+            echo ""
+
+            add_to_path_if_interactive
         fi
     fi
-
-    local version_arg="razd@${version_to_install}"
-
-    info "Installing razd version: $version_to_install"
-
-    if ! mise use -g "$version_arg" -y; then
-        error "Failed to install razd. Please check the output above."
-    fi
-
-    success "razd installed successfully"
 }
 
-# =============================================================================
-# Shell Activation Instructions
-# =============================================================================
+add_to_path_if_interactive() {
+    local rc_file=""
+    local export_line="export PATH=\"${RAZD_INSTALL_DIR}:\$PATH\""
 
-get_shell_config() {
-    # Detect shell and return rc_file and activation_cmd
     case "${SHELL:-}" in
         */zsh)
-            DETECTED_SHELL="zsh"
-            RC_FILE="$HOME/.zshrc"
-            ACTIVATION_CMD='eval "$(mise activate zsh)"'
+            rc_file="$HOME/.zshrc"
             ;;
         */bash)
-            DETECTED_SHELL="bash"
-            RC_FILE="$HOME/.bashrc"
-            ACTIVATION_CMD='eval "$(mise activate bash)"'
-            ;;
-        */fish)
-            DETECTED_SHELL="fish"
-            RC_FILE="$HOME/.config/fish/config.fish"
-            ACTIVATION_CMD='mise activate fish | source'
+            rc_file="$HOME/.bashrc"
             ;;
         *)
-            DETECTED_SHELL=""
-            RC_FILE=""
-            ACTIVATION_CMD=""
+            return
             ;;
     esac
-}
 
-check_activation_exists() {
-    # Check if mise activation is already in the rc file
-    if [ -n "$RC_FILE" ] && [ -f "$RC_FILE" ]; then
-        if grep -q "mise activate" "$RC_FILE" 2>/dev/null; then
-            return 0  # Already exists
-        fi
-    fi
-    return 1  # Not found
-}
-
-prompt_add_to_rc() {
-    get_shell_config
-
-    if [ -z "$DETECTED_SHELL" ]; then
-        info "Could not detect your shell. Please manually add mise activation to your shell's rc file."
+    if [ -f "$rc_file" ] && grep -q "razd" "$rc_file" 2>/dev/null; then
         return
     fi
 
-    # Check if already configured
-    if check_activation_exists; then
-        success "mise activation already configured in $RC_FILE"
-        return
-    fi
-
-    echo ""
-    info "To use razd, mise must be activated in your shell."
-    echo ""
-
-    # Check if running interactively
     if [ -t 0 ]; then
-        # Interactive mode - ask user
-        echo -e "   ${CYAN}Add mise activation to ${RC_FILE}?${NC} [Y/n] "
+        echo -e "   ${CYAN}Add ${RAZD_INSTALL_DIR} to PATH in ${rc_file}?${NC} [Y/n] "
         read -r response
         case "$response" in
             [nN][oO]|[nN])
-                info "Skipped. You can manually add this line to $RC_FILE:"
+                info "Skipped. You can manually add this line to ${rc_file}:"
                 echo ""
-                echo -e "   ${GREEN}${ACTIVATION_CMD}${NC}"
+                echo -e "   ${GREEN}${export_line}${NC}"
                 echo ""
                 ;;
             *)
-                # Add to rc file
-                echo "" >> "$RC_FILE"
-                echo "# mise activation (added by razd installer)" >> "$RC_FILE"
-                echo "$ACTIVATION_CMD" >> "$RC_FILE"
-                success "Added mise activation to $RC_FILE"
+                echo "" >> "$rc_file"
+                echo "# razd" >> "$rc_file"
+                echo "$export_line" >> "$rc_file"
+                success "Added ${RAZD_INSTALL_DIR} to PATH in ${rc_file}"
                 echo ""
                 info "Restart your terminal or run:"
                 echo ""
-                echo -e "   ${GREEN}source $RC_FILE${NC}"
+                echo -e "   ${GREEN}source ${rc_file}${NC}"
                 echo ""
                 ;;
         esac
     else
-        # Non-interactive mode (piped) - automatically add activation
-        if [ -n "$RC_FILE" ] && [ -d "$(dirname "$RC_FILE")" ]; then
-            echo "" >> "$RC_FILE"
-            echo "# mise activation (added by razd installer)" >> "$RC_FILE"
-            echo "$ACTIVATION_CMD" >> "$RC_FILE"
-            success "Added mise activation to $RC_FILE"
-        else
-            info "Could not automatically add mise activation. Please add this line to your shell's rc file:"
-            echo ""
-            echo -e "   ${GREEN}${ACTIVATION_CMD}${NC}"
-            echo ""
-        fi
+        echo "" >> "$rc_file"
+        echo "# razd" >> "$rc_file"
+        echo "$export_line" >> "$rc_file"
+        success "Added ${RAZD_INSTALL_DIR} to PATH in ${rc_file}"
     fi
-}
-
-print_activation_instructions() {
-    step "Post-installation setup"
-    prompt_add_to_rc
 }
 
 # =============================================================================
@@ -336,10 +277,11 @@ main() {
     echo -e "${BLUE}╚════════════════════════════════════════╝${NC}"
     echo ""
 
-    install_mise
-    install_task
+    if ! command_exists curl; then
+        error "curl is required but not installed. Please install curl and try again."
+    fi
+
     install_razd
-    print_activation_instructions
 
     echo ""
     success "Installation complete!"
